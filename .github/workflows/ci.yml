@@ -37,12 +37,39 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsqlite3-dev libgtk-3-dev libx11-dev libxi-dev liblzma-dev ninja-build cmake clang pkg-config
 
-      - name: pub get
+      - name: versions
+        shell: bash
         run: |
-          (cd packages/models && dart pub get)
-          (cd packages/core && dart pub get)
-          (cd packages/cli && dart pub get)
-          (cd app && flutter pub get)
+          dart --version
+          flutter --version
+
+      - name: pub get models
+        shell: bash
+        run: |
+          set -e
+          cd packages/models
+          dart pub get
+
+      - name: pub get core
+        shell: bash
+        run: |
+          set -e
+          cd packages/core
+          dart pub get
+
+      - name: pub get cli
+        shell: bash
+        run: |
+          set -e
+          cd packages/cli
+          dart pub get
+
+      - name: pub get app
+        shell: bash
+        run: |
+          set -e
+          cd app
+          flutter pub get
 
       - name: analyze
         run: |
