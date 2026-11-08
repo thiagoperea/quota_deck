@@ -99,12 +99,33 @@ jobs:
           cd app
           dart analyze lib test
 
-      - name: test
+      - name: test models
+        shell: bash
         run: |
-          (cd packages/models && dart test)
-          (cd packages/core && dart test)
-          (cd packages/cli && dart test)
-          (cd app && flutter test)
+          set -e
+          cd packages/models
+          dart test
+
+      - name: test core
+        shell: bash
+        run: |
+          set -e
+          cd packages/core
+          dart test
+
+      - name: test cli
+        shell: bash
+        run: |
+          set -e
+          cd packages/cli
+          dart test
+
+      - name: test app
+        shell: bash
+        run: |
+          set -e
+          cd app
+          flutter test
 
   build-macos:
     name: build macOS .app
