@@ -71,12 +71,33 @@ jobs:
           cd app
           flutter pub get
 
-      - name: analyze
+      - name: analyze models
+        shell: bash
         run: |
-          (cd packages/models && dart analyze)
-          (cd packages/core && dart analyze)
-          (cd packages/cli && dart analyze)
-          (cd app && dart analyze lib test)
+          set -e
+          cd packages/models
+          dart analyze
+
+      - name: analyze core
+        shell: bash
+        run: |
+          set -e
+          cd packages/core
+          dart analyze
+
+      - name: analyze cli
+        shell: bash
+        run: |
+          set -e
+          cd packages/cli
+          dart analyze
+
+      - name: analyze app
+        shell: bash
+        run: |
+          set -e
+          cd app
+          dart analyze lib test
 
       - name: test
         run: |
