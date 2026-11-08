@@ -1,0 +1,20 @@
+name: quota_deck_cli
+description: CLI do QuotaDeck (qdeck).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  quota_deck_core:
+    path: ../core
+  quota_deck_models:
+    path: ../models
+  args: ^2.7.0
+  http: ^1.5.0
+  path: ^1.9.1
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
