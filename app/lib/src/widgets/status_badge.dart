@@ -68,13 +68,17 @@ class StatusBadge extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 5),
-                Text(
-                  text,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.1,
+                Flexible(
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: QdType.meta,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.1,
+                    ),
                   ),
                 ),
               ],
@@ -92,7 +96,7 @@ class StatusBadge extends StatelessWidget {
                 'desatualizado',
                 style: TextStyle(
                   color: palette.muted,
-                  fontSize: 9,
+                  fontSize: QdType.micro,
                   fontWeight: FontWeight.w500,
                 ),
               ),

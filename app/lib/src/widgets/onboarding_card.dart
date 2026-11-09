@@ -129,7 +129,7 @@ class OnboardingCard extends StatelessWidget {
                       '100% local: nenhum token ou dado de uso sai da sua máquina.',
                       style: TextStyle(
                         color: palette.muted,
-                        fontSize: 10.5,
+                        fontSize: QdType.small,
                         height: 1.4,
                       ),
                     ),
@@ -214,7 +214,7 @@ class _Step extends StatelessWidget {
               number,
               style: TextStyle(
                 color: palette.muted,
-                fontSize: 9.5,
+                fontSize: QdType.meta,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -254,7 +254,7 @@ class _Step extends StatelessWidget {
                           command!,
                           style: TextStyle(
                             color: palette.green,
-                            fontSize: 9.5,
+                            fontSize: QdType.meta,
                             fontFamily: 'monospace',
                           ),
                         ),
@@ -266,7 +266,7 @@ class _Step extends StatelessWidget {
                   instruction,
                   style: TextStyle(
                     color: palette.muted,
-                    fontSize: 10.5,
+                    fontSize: QdType.small,
                     height: 1.35,
                   ),
                 ),

@@ -58,7 +58,8 @@ void main() {
     expect(find.byKey(const Key('header-settings')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-opencode')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('QuotaDeck'), findsOneWidget);
+    expect(find.text('MAIOR CONSUMO'), findsOneWidget);
+    expect(find.text('DISPONÍVEL'), findsOneWidget);
 
     final claudeBottom = tester
         .getBottomLeft(find.byKey(const Key('provider-card-claude')))
@@ -79,9 +80,9 @@ void main() {
     expect(find.text('Como renovar'), findsOneWidget);
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
-    expect(find.text('PROVEDOR MAIS USADO'), findsOneWidget);
+    expect(find.text('DISPONÍVEL ESTIMADO'), findsOneWidget);
+    expect(find.text('MAIOR CONSUMO AGORA'), findsOneWidget);
     expect(find.text('PRÓXIMO RESET'), findsOneWidget);
-    expect(find.text('USO DISPONÍVEL ESTIMADO'), findsOneWidget);
     expect(find.text('Melhor agora'), findsNothing);
     expect(find.text('100% local · sem telemetria'), findsNothing);
 
@@ -90,6 +91,15 @@ void main() {
         .dx;
     final resetsLeft = tester.getTopLeft(find.text('Próximos resets')).dx;
     expect(resetsLeft, greaterThan(cardLeft));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('layout compacto suporta textScale 1.5', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpApp(tester, compact: true, size: const Size(420, 900));
+
+    expect(find.byKey(const Key('quota-deck-compact')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

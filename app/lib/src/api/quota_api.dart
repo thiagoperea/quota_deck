@@ -65,5 +65,5 @@ abstract class QuotaApi {
 
   Future<AppConfig> saveSettings(AppConfig config);
 
-  void close() {}
+  Future<void> close() async {}
 }

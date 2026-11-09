@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:isolate';
+
 import 'package:quota_deck_core/quota_deck_core.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
@@ -57,8 +60,33 @@ class LocalQuotaApi implements QuotaApi {
 
   @override
   Future<List<DetectionResult>> detect() async {
-    final service = await _service();
-    return service.detect();
+    if (serviceFactory != null) {
+      final service = await _service();
+      return service.detect();
+    }
+    final resolved = _resolvedPaths ?? paths ?? AppPaths.forPlatform();
+    final dataDir = resolved.dataDir.path;
+    try {
+      // Detecção faz tasklist/where e varre diretórios: sai do isolate da UI.
+      final payload = await Isolate.run(() async {
+        final service = await DefaultQuotaService.create(
+          paths: AppPaths(Directory(dataDir)),
+          enableHistory: false,
+        );
+        try {
+          final results = await service.detect();
+          return results.map((d) => d.toJson()).toList(growable: false);
+        } finally {
+          await service.dispose();
+        }
+      });
+      return payload
+          .map((item) => DetectionResult.fromJson(item))
+          .toList(growable: false);
+    } catch (_) {
+      final service = await _service();
+      return service.detect();
+    }
   }
 
   @override
@@ -94,10 +122,13 @@ class LocalQuotaApi implements QuotaApi {
   }
 
   @override
-  void close() {
+  Future<void> close() async {
     final future = _serviceFuture;
     if (future != null) {
-      future.then((service) => service.dispose()).catchError((_) {});
+      try {
+        final service = await future;
+        await service.dispose();
+      } catch (_) {}
     }
   }
 }

@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/legacy.dart';
@@ -8,12 +10,25 @@ import 'src/api/local_quota_api.dart';
 import 'src/api/mock_api.dart';
 import 'src/api/quota_api.dart';
 import 'src/app.dart';
+import 'src/desktop/single_instance.dart';
 import 'src/desktop/tray_service.dart';
 import 'src/state/app_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  final single = SingleInstance(
+    onShow: () async {
+      await windowManager.show();
+      await windowManager.focus();
+    },
+  );
+  final isFirst = await single.acquire();
+  if (!isFirst && await single.notifyExisting()) {
+    // Já existe uma instância: pede foco e encerra esta.
+    exit(0);
+  }
 
   const mockFlag = String.fromEnvironment('QDECK_MOCK', defaultValue: '');
   final useMock = mockFlag == '1' || mockFlag.toLowerCase() == 'true';

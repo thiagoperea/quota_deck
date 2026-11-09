@@ -238,7 +238,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           'As preferências ficam neste computador.',
                           style: TextStyle(
                             color: palette.dim,
-                            fontSize: 9.5,
+                            fontSize: QdType.meta,
                             height: 1.4,
                           ),
                         ),
@@ -259,7 +259,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                             _error!,
                             style: TextStyle(
                               color: palette.red,
-                              fontSize: 10.5,
+                              fontSize: QdType.small,
                               height: 1.35,
                             ),
                           ),
@@ -299,7 +299,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   _dirty ? 'Alterações não salvas' : 'Ajustes locais do painel',
                   style: TextStyle(
                     color: _dirty ? palette.yellow : palette.muted,
-                    fontSize: 10.5,
+                    fontSize: QdType.small,
                   ),
                 ),
               ],
@@ -448,7 +448,7 @@ class _SectionLabel extends StatelessWidget {
         text.toUpperCase(),
         style: TextStyle(
           color: palette.dim,
-          fontSize: 9,
+          fontSize: QdType.micro,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.9,
         ),
