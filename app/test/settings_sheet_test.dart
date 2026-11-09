@@ -61,12 +61,32 @@ void main() {
     state.dispose();
   });
 
+  testWidgets('SettingsSheet descarta mudanças ao fechar', (tester) async {
+    final state = await _state();
+    await _pumpSheet(tester, state);
+
+    await tester.tap(find.byKey(const Key('settings-provider-opencode')));
+    await tester.pump();
+    expect(state.config.isEnabled(ProviderId.opencode), isTrue);
+
+    await tester.tap(find.byKey(const Key('settings-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('Descartar alterações?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settings-discard')));
+    await tester.pumpAndSettle();
+
+    expect(state.config.isEnabled(ProviderId.opencode), isTrue);
+    state.dispose();
+  });
+
   testWidgets('SettingsSheet mostra erro ao falhar o salvamento', (
     tester,
   ) async {
     final state = await _state(failSettings: true);
     await _pumpSheet(tester, state);
 
+    await tester.tap(find.byKey(const Key('settings-provider-opencode')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('settings-save')));
     await tester.pumpAndSettle();
 

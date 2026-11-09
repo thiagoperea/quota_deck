@@ -88,7 +88,7 @@ void main() {
     expect(snapshot.windows[1].id, 'secondary-7d');
     expect(snapshot.account.plan, 'plus');
     expect(snapshot.account.maskedEmail, 'us***@e***.com');
-    expect(snapshot.credits?.note, contains('2 resets'));
+    expect(snapshot.credits?.note, contains('2 créditos de reset'));
   });
 
   test('uses app-server when codex binary is available', () async {
@@ -123,7 +123,7 @@ void main() {
     expect(snapshot.windows, hasLength(2));
     expect(snapshot.windows.first.id, 'primary-5h');
     expect(snapshot.windows.first.usedPercent, 25);
-    expect(snapshot.credits?.note, contains('2 resets'));
+    expect(snapshot.credits?.note, contains('2 créditos de reset'));
   });
 
   test('maps 401 to authExpired', () async {

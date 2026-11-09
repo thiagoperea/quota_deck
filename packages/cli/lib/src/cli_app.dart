@@ -552,7 +552,8 @@ class _InMemoryConfigStore extends ConfigStore {
   Future<AppConfig> load({bool force = false}) async => _value;
 
   @override
-  Future<void> save(AppConfig config) async {
+  Future<AppConfig> save(AppConfig config) async {
     _value = config;
+    return _value;
   }
 }

@@ -49,20 +49,32 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   bool _saving = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.firstRun) return;
+    final installed = widget.state.installedProviders;
+    final allAuthenticated =
+        installed.isNotEmpty &&
+        installed.every(
+          (provider) =>
+              widget.state.detectionFor(provider)?.authenticated == true,
+        );
+    if (allAuthenticated) _index = _steps.length;
+  }
+
   List<ProviderId> get _steps {
     final installed = widget.state.installedProviders.toSet();
-    if (_showAll || installed.isEmpty) {
-      return ProviderId.values;
-    }
+    if (_showAll) return ProviderId.values;
     return [
       for (final provider in ProviderId.values)
         if (installed.contains(provider)) provider,
     ];
   }
 
-  int get _totalSteps => _steps.length + 1;
+  int get _totalSteps => _steps.isEmpty ? 1 : _steps.length + 1;
 
-  bool get _isSummary => _index >= _steps.length;
+  bool get _isSummary => _steps.isEmpty || _index >= _steps.length;
 
   ProviderId get _current =>
       _steps[_index < _steps.length ? _index : _steps.length - 1];
@@ -85,23 +97,28 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   }
 
   _ProviderStatus _statusFor(ProviderId provider) {
-    final detection = widget.state.detectionFor(provider);
-    if (detection != null) {
-      if (detection.authenticated) return _ProviderStatus.connected;
-      if (detection.detected) return _ProviderStatus.signInNeeded;
-      return _ProviderStatus.notDetected;
-    }
     final snapshot = _snapshotFor(provider);
-    if (snapshot == null) return _ProviderStatus.notDetected;
-    final authError = snapshot.errors.any(
+    final authError = snapshot?.errors.any(
       (error) =>
           error.code == 'AUTH_EXPIRED' ||
           error.code == 'AUTH_MISSING' ||
-          error.code == 'PERMISSION_DENIED',
+          error.code == 'PERMISSION_DENIED' ||
+          error.code == 'NOT_INSTALLED' ||
+          error.code == 'CREDENTIAL_UNREADABLE',
     );
-    if (authError) return _ProviderStatus.signInNeeded;
-    if (snapshot.windows.isNotEmpty) return _ProviderStatus.connected;
-    return _ProviderStatus.noData;
+    if (snapshot != null && snapshot.windows.isNotEmpty && authError != true) {
+      return _ProviderStatus.connected;
+    }
+    final detection = widget.state.detectionFor(provider);
+    if (detection != null) {
+      if (detection.authenticated) return _ProviderStatus.credentialFound;
+      if (detection.detected) return _ProviderStatus.signInNeeded;
+      return _ProviderStatus.notDetected;
+    }
+    if (snapshot != null && snapshot.windows.isNotEmpty) {
+      return _ProviderStatus.connected;
+    }
+    return _ProviderStatus.notDetected;
   }
 
   Future<void> _verify(ProviderId provider) async {
@@ -163,6 +180,14 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   void _back() {
     if (_index == 0) return;
     setState(() => _index -= 1);
+  }
+
+  Future<void> _close() async {
+    if (widget.firstRun) {
+      await _finish();
+      return;
+    }
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -273,7 +298,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
           ),
           IconButton(
             key: const Key('wizard-close'),
-            onPressed: _saving ? null : () => Navigator.of(context).maybePop(),
+            onPressed: _saving ? null : _close,
             tooltip: 'Fechar assistente',
             icon: const Icon(Icons.close, size: 17),
           ),
@@ -489,6 +514,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
 
   Widget _summary(QdPalette palette) {
     final enabled = ProviderId.values.where(_isEnabled).toList(growable: false);
+    final nothingDetected = _steps.isEmpty;
     final hidden = [
       for (final provider in ProviderId.values)
         if (!_steps.contains(provider)) provider,
@@ -497,7 +523,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Tudo pronto',
+          nothingDetected ? 'Nenhuma ferramenta detectada' : 'Tudo pronto',
           style: TextStyle(
             color: palette.text,
             fontSize: 15,
@@ -506,11 +532,47 @@ class _ProviderWizardState extends State<_ProviderWizard> {
         ),
         const SizedBox(height: 4),
         Text(
-          enabled.isEmpty
+          nothingDetected
+              ? 'Abra o app ou rode o CLI de um provedor e use "Verificar de novo". '
+                    'Você também pode habilitar manualmente abaixo.'
+              : enabled.isEmpty
               ? 'Nenhum provedor ativo. Você pode ativar depois nas configurações.'
               : '${enabled.length} de ${ProviderId.values.length} provedores aparecem no painel.',
           style: TextStyle(color: palette.muted, fontSize: 11, height: 1.45),
         ),
+        if (nothingDetected) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('wizard-redetect'),
+            onPressed: widget.state.detecting
+                ? null
+                : () async {
+                    await widget.state.detectProviders();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+            icon: widget.state.detecting
+                ? SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.green,
+                    ),
+                  )
+                : const Icon(Icons.refresh, size: 14),
+            label: const Text('Verificar de novo'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: palette.text,
+              side: BorderSide(color: palette.border),
+              minimumSize: const Size(0, 36),
+              textStyle: const TextStyle(fontSize: 10.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         for (final provider in ProviderId.values) ...[
           _SummaryRow(
@@ -635,7 +697,13 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   }
 }
 
-enum _ProviderStatus { connected, signInNeeded, noData, notDetected }
+enum _ProviderStatus {
+  connected,
+  credentialFound,
+  signInNeeded,
+  noData,
+  notDetected,
+}
 
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status});
@@ -647,6 +715,10 @@ class _StatusChip extends StatelessWidget {
     final palette = QdPalette.of(context);
     final (label, color) = switch (status) {
       _ProviderStatus.connected => ('conectado', palette.green),
+      _ProviderStatus.credentialFound => (
+        'credencial encontrada',
+        palette.blue,
+      ),
       _ProviderStatus.signInNeeded => ('login necessário', palette.yellow),
       _ProviderStatus.noData => ('sem dados', palette.blue),
       _ProviderStatus.notDetected => ('não detectado', palette.dim),

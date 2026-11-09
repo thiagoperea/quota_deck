@@ -45,9 +45,11 @@ class OpenCodeProvider implements ProviderAdapter {
           live: true,
           version: version,
           location: db == null
-              ? desktopDir
+              ? (desktopDir == null
+                    ? null
+                    : AppPaths.maskPath(desktopDir, env: ctx.env))
               : AppPaths.maskPath(db.path, env: ctx.env),
-          account: seenAccount,
+          account: seenAccount == null ? null : maskEmail(seenAccount),
           reason: cred == null
               ? 'OpenCode Desktop detectado, mas sem credencial legível.'
               : 'Credencial ${cred.type} do OpenCode Desktop.',
@@ -62,7 +64,7 @@ class OpenCodeProvider implements ProviderAdapter {
           live: true,
           version: version,
           location: cliBinary,
-          account: seenAccount,
+          account: seenAccount == null ? null : maskEmail(seenAccount),
           reason: cred == null
               ? 'CLI detectada; mesmo banco do desktop sem credencial ativa.'
               : 'Credencial ${cred.type} compartilhada com o desktop.',
@@ -79,16 +81,22 @@ class OpenCodeProvider implements ProviderAdapter {
     final cred = _readCredential(ctx);
     if (cred == null) {
       final db = _existingDb(ctx);
-      final tried = AppPaths.openCodeDbs(env: ctx.env)
-          .map((f) => AppPaths.maskPath(f.path, env: ctx.env))
-          .join(', ');
+      if (db == null) {
+        final tried = AppPaths.openCodeDbs(env: ctx.env)
+            .map((f) => AppPaths.maskPath(f.path, env: ctx.env))
+            .join(', ');
+        throw QdeckException(
+          code: QdeckErrorCode.notInstalled,
+          provider: id,
+          message: 'OpenCode não encontrado. Procurei em: $tried.',
+        );
+      }
       throw QdeckException(
         code: QdeckErrorCode.authMissing,
         provider: id,
-        message: db == null
-            ? 'OpenCode não encontrado. Procurei em: $tried.'
-            : 'OpenCode encontrado em ${AppPaths.maskPath(db.path, env: ctx.env)}, '
-                  'mas sem credencial ativa. Faça login no OpenCode.',
+        message:
+            'OpenCode encontrado em ${AppPaths.maskPath(db.path, env: ctx.env)}, '
+            'mas sem credencial ativa. Faça login no OpenCode Desktop ou CLI.',
       );
     }
 
@@ -113,7 +121,7 @@ class OpenCodeProvider implements ProviderAdapter {
     }
     if (response.statusCode == 403) {
       throw QdeckException(
-        code: QdeckErrorCode.authMissing,
+        code: QdeckErrorCode.noSubscription,
         provider: id,
         message: 'Workspace sem assinatura OpenCode Go.',
       );
@@ -154,7 +162,9 @@ class OpenCodeProvider implements ProviderAdapter {
     for (final key in const ['rolling', 'weekly', 'monthly']) {
       final item = usage[key];
       if (item is! Map) continue;
-      final used = clampPercent(asDouble(item['percent']));
+      final usedRaw = asDoubleOrNull(item['percent']);
+      if (usedRaw == null) continue;
+      final used = clampPercent(usedRaw);
       final status = statusForUsed(used, explicit: item['status']?.toString());
       windows.add(
         QuotaWindow(

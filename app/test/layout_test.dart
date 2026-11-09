@@ -76,7 +76,7 @@ void main() {
     expect(find.byKey(const Key('provider-card-antigravity')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-codex')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('Abrir Claude Code'), findsOneWidget);
+    expect(find.text('Como renovar'), findsOneWidget);
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
     expect(find.text('PROVEDOR MAIS USADO'), findsOneWidget);
@@ -136,6 +136,24 @@ void main() {
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
     expect(find.text('Configurar provedores'), findsOneWidget);
     expect(find.byKey(const Key('wizard-toggle-opencode')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('primeira execução sem nada instalado cai no resumo', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      empty: true,
+      onboarded: false,
+      installed: const {},
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+    expect(find.text('Nenhuma ferramenta detectada'), findsOneWidget);
+    expect(find.byKey(const Key('wizard-redetect')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

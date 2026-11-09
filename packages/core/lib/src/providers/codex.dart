@@ -176,15 +176,23 @@ class CodexProvider implements ProviderAdapter {
   Future<ProviderSnapshot> _readWham(ProviderContext ctx) async {
     final auth = await _readAuth(ctx);
     if (auth == null || auth.token == null || auth.token!.isEmpty) {
+      final installed =
+          await _binaryAvailable(ctx) ||
+          _desktopDir(ctx) != null ||
+          await ctx.discovery.isRunning(const ['codex']);
       throw QdeckException(
-        code: QdeckErrorCode.authMissing,
+        code: installed
+            ? QdeckErrorCode.authMissing
+            : QdeckErrorCode.notInstalled,
         provider: id,
-        message: 'Codex sem auth.json/keyring com access_token. Abra o Codex para autenticar.',
+        message: installed
+            ? 'Codex sem auth.json/keyring com access_token. Abra o Codex para autenticar.'
+            : 'Codex não encontrado nesta máquina.',
       );
     }
     if (auth.mode == 'apikey') {
       throw QdeckException(
-        code: QdeckErrorCode.authMissing,
+        code: QdeckErrorCode.apiKeyMode,
         provider: id,
         message:
             'Codex em auth_mode=apikey; limites de assinatura não disponíveis.',
@@ -250,9 +258,9 @@ class CodexProvider implements ProviderAdapter {
     for (final key in const ['primary_window', 'secondary_window']) {
       final item = rateLimit[key];
       if (item is! Map) continue;
-      final used = clampPercent(
-        (item['used_percent'] as num?)?.toDouble() ?? 0,
-      );
+      final usedRaw = asDoubleOrNull(item['used_percent']);
+      if (usedRaw == null) continue;
+      final used = clampPercent(usedRaw);
       final seconds = asIntOrNull(item['limit_window_seconds']) ?? 0;
       final duration = seconds > 0 ? durationLabel(seconds) : null;
       final windowId = switch (seconds) {
@@ -303,7 +311,7 @@ class CodexProvider implements ProviderAdapter {
         hasCredits: credits['has_credits'] == true,
         unlimited: credits['unlimited'] == true,
         balance: _doubleOrNull(credits['balance']),
-        note: resetCount == null ? null : '$resetCount resets disponíveis',
+        note: resetCount == null ? null : '$resetCount créditos de reset',
       );
     }
 
@@ -400,9 +408,9 @@ class CodexProvider implements ProviderAdapter {
       for (final key in const ['primary', 'secondary']) {
         final item = rateLimits[key];
         if (item is! Map) continue;
-        final used = clampPercent(
-          (item['usedPercent'] as num?)?.toDouble() ?? 0,
-        );
+        final usedRaw = asDoubleOrNull(item['usedPercent']);
+        if (usedRaw == null) continue;
+        final used = clampPercent(usedRaw);
         final mins = asIntOrNull(item['windowDurationMins']) ?? 0;
         final seconds = mins * 60;
         final windowId = switch (mins) {
@@ -457,7 +465,7 @@ class CodexProvider implements ProviderAdapter {
             : CreditsInfo(
                 hasCredits: false,
                 unlimited: false,
-                note: '$resetCount resets disponíveis',
+                note: '$resetCount créditos de reset',
               ),
         source: 'codex-app-server',
         sourceId: 'codex-app-server',

@@ -163,5 +163,17 @@ void main() {
       expect(maskEmail('user@example.com'), 'us***@e***.com');
       expect(maskEmail(null), '');
     });
+
+    test('redacts quoted JSON credentials', () {
+      const input =
+          '{"access_token":"abc123secret","refreshToken":"rt_987","apiKey":"k-1"}';
+      final out = redact(input);
+      expect(out, isNot(contains('abc123secret')));
+      expect(out, isNot(contains('rt_987')));
+      expect(out, isNot(contains('k-1')));
+      expect(out, contains('"access_token":"<redacted>"'));
+      expect(out, contains('"refreshToken":"<redacted>"'));
+      expect(out, contains('"apiKey":"<redacted>"'));
+    });
   });
 }

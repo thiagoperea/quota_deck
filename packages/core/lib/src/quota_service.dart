@@ -165,17 +165,13 @@ class DefaultQuotaService implements QuotaService {
         maxAge: Duration(seconds: config.cacheTtlSeconds),
       );
       if (cached != null) {
-        return cached.copyWith(stale: false);
+        return cached;
       }
     }
 
+    final ProviderSnapshot snapshot;
     try {
-      final snapshot = await adapter
-          .read(_ctx)
-          .timeout(const Duration(seconds: 20));
-      cache.put(snapshot);
-      historyStore?.appendSnapshot(snapshot);
-      return snapshot;
+      snapshot = await adapter.read(_ctx).timeout(const Duration(seconds: 20));
     } on QdeckException catch (e) {
       return _fallbackOrError(adapter.id, e);
     } on TimeoutException {
@@ -197,6 +193,15 @@ class DefaultQuotaService implements QuotaService {
         ),
       );
     }
+
+    cache.put(snapshot);
+    try {
+      historyStore?.appendSnapshot(snapshot);
+    } catch (e) {
+      // Histórico é complementar: falha no SQLite não pode derrubar a leitura.
+      log('Histórico indisponível (${e.runtimeType}); leitura preservada.');
+    }
+    return snapshot;
   }
 
   ProviderSnapshot _fallbackOrError(ProviderId id, QdeckException error) {
@@ -243,13 +248,26 @@ class DefaultQuotaService implements QuotaService {
 
   @override
   Future<List<DoctorCheck>> doctor() async {
+    var writable = false;
+    try {
+      final probe = File(
+        '${paths.dataDir.path}${Platform.pathSeparator}.doctor-write-probe',
+      );
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+      writable = true;
+    } catch (_) {
+      writable = false;
+    }
     final checks = <DoctorCheck>[
       DoctorCheck(
         provider: ProviderId.opencode,
         id: 'data-dir',
         label: 'Diretório de dados',
-        status: DoctorStatus.ok,
-        message: 'Dados locais em ${paths.maskedDataDir}',
+        status: writable ? DoctorStatus.ok : DoctorStatus.fail,
+        message: writable
+            ? 'Dados locais em ${paths.maskedDataDir} (gravável)'
+            : 'Sem permissão de escrita em ${paths.maskedDataDir}',
       ),
     ];
     for (final adapter in adapters) {
