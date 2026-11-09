@@ -11,14 +11,25 @@ import 'provider_card.dart';
 
 /// Assistente de configuração: mostra um provedor por vez, permite ativar,
 /// explica o login/refresh e valida a credencial na hora.
-Future<void> showProviderWizard(BuildContext context, {bool firstRun = false}) {
+bool _wizardOpen = false;
+
+Future<void> showProviderWizard(
+  BuildContext context, {
+  bool firstRun = false,
+}) async {
+  if (_wizardOpen) return;
+  _wizardOpen = true;
   final state = context.read<AppState>();
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: !firstRun,
-    barrierColor: Colors.black.withValues(alpha: 0.62),
-    builder: (_) => _ProviderWizard(state: state, firstRun: firstRun),
-  );
+  try {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !firstRun,
+      barrierColor: Colors.black.withValues(alpha: 0.62),
+      builder: (_) => _ProviderWizard(state: state, firstRun: firstRun),
+    );
+  } finally {
+    _wizardOpen = false;
+  }
 }
 
 class _ProviderWizard extends StatefulWidget {
