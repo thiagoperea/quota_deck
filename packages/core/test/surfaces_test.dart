@@ -28,12 +28,14 @@ void main() {
       'LOCALAPPDATA': r'C:\Users\me\AppData\Local',
       'APPDATA': r'C:\Users\me\AppData\Roaming',
     };
-    final files = AppPaths.openCodeDbs(env: env).map((f) => f.path).toList();
+    final files = AppPaths.openCodeDbs(
+      env: env,
+    ).map((f) => f.path.replaceAll('\\', '/')).toList();
     final xdgIndex = files.indexWhere(
-      (path) => path.endsWith(r'.local\share\opencode\opencode.db'),
+      (path) => path.endsWith('.local/share/opencode/opencode.db'),
     );
     final legacyIndex = files.indexWhere(
-      (path) => path.endsWith(r'AppData\Local\opencode\opencode.db'),
+      (path) => path.endsWith('AppData/Local/opencode/opencode.db'),
     );
     expect(xdgIndex, greaterThanOrEqualTo(0));
     expect(legacyIndex, greaterThan(xdgIndex));
