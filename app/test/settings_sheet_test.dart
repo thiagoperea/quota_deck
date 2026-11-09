@@ -43,8 +43,10 @@ void main() {
 
     await tester.tap(find.byKey(const Key('settings-provider-opencode')));
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('settings-refresh-120')));
     await tester.tap(find.byKey(const Key('settings-refresh-120')));
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('settings-theme-light')));
     await tester.tap(find.byKey(const Key('settings-theme-light')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('settings-save')));

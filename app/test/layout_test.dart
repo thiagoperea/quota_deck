@@ -149,14 +149,27 @@ void main() {
     );
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
-    expect(find.text('OpenCode'), findsOneWidget);
-    expect(find.text('Claude'), findsNothing);
-    expect(find.text('Antigravity'), findsNothing);
+    final wizard = find.byKey(const Key('provider-wizard'));
+    expect(
+      find.descendant(of: wizard, matching: find.text('OpenCode')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: wizard, matching: find.text('Claude')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: wizard, matching: find.text('Antigravity')),
+      findsNothing,
+    );
 
     // opencode -> codex -> resumo
     await tester.tap(find.byKey(const Key('wizard-next')));
     await tester.pumpAndSettle();
-    expect(find.text('Codex'), findsOneWidget);
+    expect(
+      find.descendant(of: wizard, matching: find.text('Codex')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('wizard-next')));
     await tester.pumpAndSettle();
 
