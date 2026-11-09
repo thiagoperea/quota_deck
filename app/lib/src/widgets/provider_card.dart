@@ -491,6 +491,7 @@ String _friendlySource(ProviderSnapshot snapshot) {
   return switch (id) {
     'claude-desktop-history' => 'histórico local do Claude Desktop (estimado)',
     'claude-oauth-usage' => 'API do Claude Code',
+    'opencode-db' => 'banco local do OpenCode',
     'opencode-usage-api' => 'API do OpenCode',
     'codex-app-server' => 'app-server do Codex',
     'codex-wham-usage' => 'API de uso do Codex',
