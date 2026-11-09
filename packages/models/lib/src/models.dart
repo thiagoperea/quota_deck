@@ -546,6 +546,7 @@ class AppConfig {
   final bool launchAtLogin;
   final bool allowProbe;
   final bool allowOAuthRefresh;
+  final bool onboardingCompleted;
 
   const AppConfig({
     this.schemaVersion = 1,
@@ -562,6 +563,7 @@ class AppConfig {
     this.launchAtLogin = false,
     this.allowProbe = false,
     this.allowOAuthRefresh = false,
+    this.onboardingCompleted = false,
   });
 
   factory AppConfig.defaults() => const AppConfig(
@@ -619,6 +621,9 @@ class AppConfig {
       allowOAuthRefresh: json['allowOAuthRefresh'] == null
           ? defaults.allowOAuthRefresh
           : _asBool(json['allowOAuthRefresh']),
+      onboardingCompleted: json['onboardingCompleted'] == null
+          ? defaults.onboardingCompleted
+          : _asBool(json['onboardingCompleted']),
     );
   }
 
@@ -637,6 +642,7 @@ class AppConfig {
     'launchAtLogin': launchAtLogin,
     'allowProbe': allowProbe,
     'allowOAuthRefresh': allowOAuthRefresh,
+    'onboardingCompleted': onboardingCompleted,
   };
 
   bool isEnabled(ProviderId id) => providers[id.wireName] ?? true;
@@ -655,6 +661,7 @@ class AppConfig {
     bool? launchAtLogin,
     bool? allowProbe,
     bool? allowOAuthRefresh,
+    bool? onboardingCompleted,
   }) => AppConfig(
     schemaVersion: schemaVersion,
     providers: providers ?? this.providers,
@@ -670,6 +677,7 @@ class AppConfig {
     launchAtLogin: launchAtLogin ?? this.launchAtLogin,
     allowProbe: allowProbe ?? this.allowProbe,
     allowOAuthRefresh: allowOAuthRefresh ?? this.allowOAuthRefresh,
+    onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
   );
 }
 

@@ -52,6 +52,19 @@ class AppState extends ChangeNotifier {
   bool get hasProvidersEnabled =>
       ProviderId.values.any((provider) => _config.isEnabled(provider));
 
+  int get enabledProviderCount =>
+      ProviderId.values.where(_config.isEnabled).length;
+
+  bool get needsOnboarding => !_config.onboardingCompleted;
+
+  /// Estimativa conservadora: 100% menos a janela mais consumida.
+  double? get estimatedAvailablePercent {
+    final quota = tightest;
+    if (quota == null) return null;
+    final value = 100 - quota.window.usedPercent;
+    return value < 0 ? 0 : value;
+  }
+
   List<ProviderSnapshot> get visibleSnapshots {
     final results = _envelope?.results ?? const <ProviderSnapshot>[];
     final enabled = results
@@ -89,18 +102,6 @@ class AppState extends ChangeNotifier {
         if (result == null || window.usedPercent > result.window.usedPercent) {
           result = TightestQuota(snapshot: snapshot, window: window);
         }
-      }
-    }
-    return result;
-  }
-
-  ProviderSnapshot? get bestNow {
-    ProviderSnapshot? result;
-    for (final snapshot in visibleSnapshots) {
-      if (snapshot.windows.isEmpty || _isAuthError(snapshot)) continue;
-      if (result == null ||
-          snapshot.worstUsedPercent < result.worstUsedPercent) {
-        result = snapshot;
       }
     }
     return result;

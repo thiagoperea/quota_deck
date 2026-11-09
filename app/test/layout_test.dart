@@ -11,6 +11,7 @@ Future<AppState> _pumpApp(
   required bool compact,
   required Size size,
   bool empty = false,
+  bool onboarded = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -20,7 +21,11 @@ Future<AppState> _pumpApp(
   final state = AppState(
     MockApi(
       empty: empty,
-      config: AppConfig.defaults().copyWith(theme: 'dark', refreshSeconds: 0),
+      config: AppConfig.defaults().copyWith(
+        theme: 'dark',
+        refreshSeconds: 0,
+        onboardingCompleted: onboarded,
+      ),
     ),
   );
   addTearDown(state.dispose);
@@ -72,6 +77,11 @@ void main() {
     expect(find.text('Abrir Claude Code'), findsOneWidget);
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
+    expect(find.text('PROVEDOR MAIS USADO'), findsOneWidget);
+    expect(find.text('PRÓXIMO RESET'), findsOneWidget);
+    expect(find.text('USO DISPONÍVEL ESTIMADO'), findsOneWidget);
+    expect(find.text('Melhor agora'), findsNothing);
+    expect(find.text('100% local · sem telemetria'), findsNothing);
 
     final cardLeft = tester
         .getTopLeft(find.byKey(const Key('provider-card-opencode')))
@@ -108,6 +118,52 @@ void main() {
 
     expect(find.text('Configurações'), findsOneWidget);
     expect(find.byKey(const Key('settings-save')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('primeira execução abre o assistente de provedores', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      onboarded: false,
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+    expect(find.text('Configurar provedores'), findsOneWidget);
+    expect(find.byKey(const Key('wizard-toggle-opencode')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('assistente percorre provedores e desativa um do painel', (
+    tester,
+  ) async {
+    await _pumpApp(tester, compact: false, size: const Size(1200, 900));
+
+    await tester.tap(find.byKey(const Key('header-wizard')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('wizard-toggle-codex')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wizard-toggle-codex')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('provider-card-codex')), findsNothing);
+    expect(find.byKey(const Key('provider-card-opencode')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

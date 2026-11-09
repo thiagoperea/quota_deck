@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/error_card.dart';
 import '../widgets/onboarding_card.dart';
 import '../widgets/provider_card.dart';
+import '../widgets/provider_wizard.dart';
 import '../widgets/quota_bar.dart';
 import '../widgets/settings_sheet.dart';
 import '../widgets/sparkline.dart';
@@ -25,13 +26,24 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  bool _wizardShown = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(context.read<AppState>().initialize());
+      unawaited(_bootstrap());
     });
+  }
+
+  Future<void> _bootstrap() async {
+    final state = context.read<AppState>();
+    await state.initialize();
+    if (!mounted) return;
+    if (state.config.onboardingCompleted || _wizardShown) return;
+    _wizardShown = true;
+    await showProviderWizard(context, firstRun: true);
   }
 
   @override
@@ -88,6 +100,8 @@ class _HomePageState extends State<HomePage> {
                           state: state,
                           compact: compact,
                           onRefresh: () => unawaited(state.refresh()),
+                          onWizard: () =>
+                              unawaited(showProviderWizard(context)),
                           onSettings: () =>
                               unawaited(showSettingsSheet(context)),
                         ),
@@ -119,6 +133,8 @@ class _HomePageState extends State<HomePage> {
                           OnboardingCard(
                             noProvidersEnabled: !state.hasProvidersEnabled,
                             onRetry: () => unawaited(state.retry()),
+                            onOpenWizard: () =>
+                                unawaited(showProviderWizard(context)),
                             onOpenSettings: () =>
                                 unawaited(showSettingsSheet(context)),
                           )
@@ -226,12 +242,14 @@ class _Header extends StatelessWidget {
     required this.state,
     required this.compact,
     required this.onRefresh,
+    required this.onWizard,
     required this.onSettings,
   });
 
   final AppState state;
   final bool compact;
   final VoidCallback onRefresh;
+  final VoidCallback onWizard;
   final VoidCallback onSettings;
 
   @override
@@ -312,6 +330,14 @@ class _Header extends StatelessWidget {
           onPressed: state.refreshing ? null : onRefresh,
           compact: compact,
           busy: state.refreshing,
+        ),
+        const SizedBox(width: 4),
+        _HeaderButton(
+          key: const Key('header-wizard'),
+          icon: Icons.checklist_rtl,
+          tooltip: 'Assistente de provedores',
+          onPressed: onWizard,
+          compact: compact,
         ),
         const SizedBox(width: 4),
         _HeaderButton(
@@ -436,21 +462,20 @@ class _SummaryStats extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final tightest = state.tightest;
+    final mostUsed = state.tightest;
     final nextReset = state.nextReset;
-    final history = state.featuredHistory;
+    final available = state.estimatedAvailablePercent;
 
-    final tightestValue = tightest == null
+    final mostUsedValue = mostUsed == null
         ? '—'
-        : '${tightest.snapshot.provider.displayName} '
-              '${formatPercent(tightest.window.usedPercent)}%';
-    final tightestSubtitle = tightest == null
+        : mostUsed.snapshot.provider.displayName;
+    final mostUsedSubtitle = mostUsed == null
         ? 'Sem janelas de quota'
-        : '${tightest.window.label} · reset '
-              '${relativeTime(tightest.window.resetsAt)}';
-    final tightestColor = tightest == null
+        : '${mostUsed.window.label} · '
+              '${formatPercent(mostUsed.window.usedPercent)}% usado';
+    final mostUsedColor = mostUsed == null
         ? palette.dim
-        : QuotaBar.colorFor(context, tightest.window.status);
+        : QuotaBar.colorFor(context, mostUsed.window.status);
 
     final resetValue = nextReset == null
         ? '—'
@@ -460,13 +485,19 @@ class _SummaryStats extends StatelessWidget {
         : '${nextReset.snapshot.provider.displayName} · '
               '${nextReset.window.label}';
 
-    final etaValue = _formatEta(history?.etaHours);
-    final etaSubtitle = history == null
-        ? 'sem histórico ainda'
-        : history.etaHours == null
-        ? 'burn rate baixo nas últimas 6h'
-        : 'burn ${_decimal(history.burnRatePerHour)}%/h · '
-              '${history.samples.length} amostras';
+    final availableValue = available == null
+        ? '—'
+        : '${formatPercent(available)}%';
+    final availableSubtitle = mostUsed == null
+        ? 'Sem dados para estimar'
+        : 'pior janela · ${mostUsed.snapshot.provider.displayName}';
+    final availableColor = available == null
+        ? palette.dim
+        : available >= 50
+        ? palette.green
+        : available >= 20
+        ? palette.yellow
+        : palette.red;
 
     if (compact) {
       return Container(
@@ -480,7 +511,7 @@ class _SummaryStats extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'PROVEDOR MAIS APERTADO',
+              'PROVEDOR MAIS USADO',
               style: TextStyle(
                 color: palette.dim,
                 fontSize: 8.5,
@@ -490,16 +521,16 @@ class _SummaryStats extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              tightestValue,
+              mostUsedValue,
               style: TextStyle(
-                color: tightestColor,
+                color: mostUsedColor,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.3,
               ),
             ),
             Text(
-              tightestSubtitle,
+              mostUsedSubtitle,
               style: TextStyle(color: palette.muted, fontSize: 9.5),
             ),
             Padding(
@@ -519,10 +550,10 @@ class _SummaryStats extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _MiniStat(
-                    label: 'ETA ATÉ O LIMITE',
-                    value: etaValue,
-                    subtitle: etaSubtitle,
-                    color: palette.blue,
+                    label: 'USO DISPONÍVEL ESTIMADO',
+                    value: availableValue,
+                    subtitle: availableSubtitle,
+                    color: availableColor,
                   ),
                 ),
               ],
@@ -536,10 +567,10 @@ class _SummaryStats extends StatelessWidget {
       builder: (context, constraints) {
         final cards = [
           _StatCard(
-            label: 'Provedor mais apertado',
-            value: tightestValue,
-            subtitle: tightestSubtitle,
-            color: tightestColor,
+            label: 'Provedor mais usado',
+            value: mostUsedValue,
+            subtitle: mostUsedSubtitle,
+            color: mostUsedColor,
           ),
           _StatCard(
             label: 'Próximo reset',
@@ -548,10 +579,10 @@ class _SummaryStats extends StatelessWidget {
             color: palette.yellow,
           ),
           _StatCard(
-            label: 'ETA até o limite',
-            value: etaValue,
-            subtitle: etaSubtitle,
-            color: palette.blue,
+            label: 'Uso disponível estimado',
+            value: availableValue,
+            subtitle: availableSubtitle,
+            color: availableColor,
           ),
         ];
         if (constraints.maxWidth >= 640) {
@@ -721,8 +752,6 @@ class _Content extends StatelessWidget {
       _ResetsPanel(state: state, compact: compact),
       SizedBox(height: compact ? 10 : 12),
       _TrendPanel(state: state, compact: compact),
-      SizedBox(height: compact ? 10 : 12),
-      _BestPanel(state: state, compact: compact),
     ];
 
     return LayoutBuilder(
@@ -920,77 +949,6 @@ class _TrendPanel extends StatelessWidget {
   }
 }
 
-class _BestPanel extends StatelessWidget {
-  const _BestPanel({required this.state, required this.compact});
-
-  final AppState state;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QdPalette.of(context);
-    final best = state.bestNow;
-    if (best == null) {
-      return _Panel(
-        title: 'Melhor agora',
-        compact: compact,
-        child: Text(
-          'Sem provedor disponível para comparar.',
-          style: TextStyle(color: palette.muted, fontSize: 10.5),
-        ),
-      );
-    }
-    final remaining = 100 - best.worstUsedPercent;
-    return Container(
-      padding: EdgeInsets.all(compact ? 11 : 13),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            palette.green.withValues(alpha: 0.1),
-            palette.green.withValues(alpha: 0.02),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.green.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        children: [
-          ProviderAvatar(provider: best.provider, size: compact ? 22 : 24),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Melhor agora: ${best.provider.displayName}',
-                  style: TextStyle(
-                    color: palette.green,
-                    fontSize: compact ? 11 : 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${formatPercent(remaining)}% restante no pior caso · '
-                  '${best.windows.length} janela${best.windows.length == 1 ? '' : 's'}',
-                  maxLines: 2,
-                  style: TextStyle(
-                    color: palette.muted,
-                    fontSize: 9.5,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Panel extends StatelessWidget {
   const _Panel({
     required this.title,
@@ -1103,15 +1061,10 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final version = state.meta?.version ?? '0.1.0';
+    final version = state.meta?.version ?? '0.1.1';
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            '100% local · sem telemetria',
-            style: TextStyle(color: palette.dim, fontSize: 9),
-          ),
-        ),
+        const Spacer(),
         Text('v$version', style: TextStyle(color: palette.dim, fontSize: 9)),
       ],
     );

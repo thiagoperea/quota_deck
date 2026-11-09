@@ -9,11 +9,13 @@ class OnboardingCard extends StatelessWidget {
   const OnboardingCard({
     super.key,
     this.onRetry,
+    this.onOpenWizard,
     this.onOpenSettings,
     this.noProvidersEnabled = false,
   });
 
   final VoidCallback? onRetry;
+  final VoidCallback? onOpenWizard;
   final VoidCallback? onOpenSettings;
   final bool noProvidersEnabled;
 
@@ -141,6 +143,13 @@ class OnboardingCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (onOpenWizard != null)
+                FilledButton.icon(
+                  key: const Key('onboarding-wizard'),
+                  onPressed: onOpenWizard,
+                  icon: const Icon(Icons.checklist_rtl, size: 16),
+                  label: const Text('Abrir assistente'),
+                ),
               if (onRetry != null)
                 FilledButton.icon(
                   onPressed: onRetry,

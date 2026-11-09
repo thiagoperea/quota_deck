@@ -39,7 +39,7 @@ class LocalQuotaApi implements QuotaApi {
       envelope: envelope,
       config: config,
       meta: ApiMeta(
-        version: '0.1.0',
+        version: '0.1.1',
         dataDir: paths.maskedDataDir,
         providers: [
           for (final provider in ProviderId.values)

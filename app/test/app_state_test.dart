@@ -22,6 +22,9 @@ void main() {
     expect(state.featuredHistory, isNotNull);
     expect(state.featuredHistory!.samples, isNotEmpty);
     expect(state.upcomingResets(), isNotEmpty);
+    expect(state.estimatedAvailablePercent, isNotNull);
+    expect(state.enabledProviderCount, 4);
+    expect(state.config.onboardingCompleted, isFalse);
   });
 
   test('refresh atualiza o envelope sem perder os cards', () async {

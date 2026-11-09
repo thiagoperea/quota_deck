@@ -6,7 +6,8 @@ Ele lê as credenciais que já existem na sua máquina, consulta a fonte de uso 
 
 ## O que faz
 
-- Ícone na bandeja com o provedor mais apertado.
+- Ícone na bandeja e assistente guiado por provedor, com instruções de login/refresh.
+- Provedor mais usado, próximo reset e uso disponível estimado no topo.
 - Clique abre a janela compacta; menu abre o dashboard ou atualiza.
 - Janelas de 5h, semanais e mensais por provedor, com reset e status.
 - Histórico local em SQLite com burn rate e ETA.
