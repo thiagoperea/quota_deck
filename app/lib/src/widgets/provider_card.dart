@@ -564,8 +564,10 @@ class _AuthPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 7),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 4,
+            runSpacing: 4,
             children: [
               if (onRetry != null)
                 TextButton(
@@ -578,7 +580,6 @@ class _AuthPanel extends StatelessWidget {
                   ),
                   child: const Text('Já renovei'),
                 ),
-              const SizedBox(width: 4),
               TextButton.icon(
                 onPressed: onAction,
                 icon: const Icon(Icons.open_in_new, size: 13),
