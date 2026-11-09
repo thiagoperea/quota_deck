@@ -1067,20 +1067,43 @@ class _TrendPanel extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: [
-              _LegendDot(color: color),
-              const SizedBox(width: 5),
-              Text(
-                'uso',
-                style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+              Expanded(
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _LegendDot(color: color),
+                        const SizedBox(width: 5),
+                        Text(
+                          'uso',
+                          style: TextStyle(
+                            color: palette.muted,
+                            fontSize: QdType.micro,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _LegendDot(color: palette.yellow),
+                        const SizedBox(width: 5),
+                        Text(
+                          'atenção 80%',
+                          style: TextStyle(
+                            color: palette.muted,
+                            fontSize: QdType.micro,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 12),
-              _LegendDot(color: palette.yellow),
-              const SizedBox(width: 5),
-              Text(
-                'atenção 80%',
-                style: TextStyle(color: palette.muted, fontSize: QdType.micro),
-              ),
-              const Spacer(),
               if (!collecting && history?.etaHours != null)
                 Text(
                   'ETA ${_formatEta(history!.etaHours)}',

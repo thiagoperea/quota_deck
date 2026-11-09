@@ -390,13 +390,15 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        StatusBadge(
-          status: snapshot.worstWindow?.status ?? QuotaStatus.unknown,
-          confidence: snapshot.confidence,
-          stale: snapshot.stale,
-          auth: snapshot.errors.any(
-            (error) =>
-                error.code == 'AUTH_EXPIRED' || error.code == 'AUTH_MISSING',
+        Flexible(
+          child: StatusBadge(
+            status: snapshot.worstWindow?.status ?? QuotaStatus.unknown,
+            confidence: snapshot.confidence,
+            stale: snapshot.stale,
+            auth: snapshot.errors.any(
+              (error) =>
+                  error.code == 'AUTH_EXPIRED' || error.code == 'AUTH_MISSING',
+            ),
           ),
         ),
       ],

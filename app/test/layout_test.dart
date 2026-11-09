@@ -58,7 +58,8 @@ void main() {
     expect(find.byKey(const Key('header-settings')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-opencode')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('QuotaDeck'), findsOneWidget);
+    expect(find.text('MAIOR CONSUMO'), findsOneWidget);
+    expect(find.text('DISPONÍVEL'), findsOneWidget);
 
     final claudeBottom = tester
         .getBottomLeft(find.byKey(const Key('provider-card-claude')))
