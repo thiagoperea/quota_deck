@@ -6,6 +6,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 
 import 'cache.dart';
 import 'config_store.dart';
+import 'discovery.dart';
 import 'errors.dart';
 import 'history.dart';
 import 'paths.dart';
@@ -124,7 +125,43 @@ class DefaultQuotaService implements QuotaService {
     env: env,
     now: now,
     log: log,
+    discovery: _discovery,
   );
+
+  SystemDiscovery? _discoveryInstance;
+  SystemDiscovery get _discovery =>
+      _discoveryInstance ??= SystemDiscovery(processRunner, env: env, now: now);
+
+  List<DetectionResult>? _detections;
+  DateTime? _detectionsAt;
+
+  Future<List<DetectionResult>> _detectAll({bool force = false}) async {
+    final clock = now();
+    final cached = _detections;
+    if (!force &&
+        cached != null &&
+        _detectionsAt != null &&
+        clock.difference(_detectionsAt!) < const Duration(minutes: 5)) {
+      return cached;
+    }
+    final ctx = _ctx;
+    final results = await Future.wait(
+      adapters.map((adapter) async {
+        try {
+          return await adapter.detect(ctx);
+        } catch (_) {
+          return DetectionResult(
+            provider: adapter.id,
+            detected: false,
+            reason: 'Falha na detecção',
+          );
+        }
+      }),
+    );
+    _detections = results;
+    _detectionsAt = clock;
+    return results;
+  }
 
   @override
   Future<SnapshotEnvelope> snapshot({
@@ -141,8 +178,21 @@ class DefaultQuotaService implements QuotaService {
         })
         .toList(growable: false);
 
+    final detections = await _detectAll();
+    final byProvider = {
+      for (final detection in detections) detection.provider: detection,
+    };
+    final ctx = _ctx;
     final results = await Future.wait(
-      selected.map((adapter) => _readOne(adapter, config, noCache: noCache)),
+      selected.map(
+        (adapter) => _readOne(
+          adapter,
+          config,
+          noCache: noCache,
+          ctx: ctx,
+          detection: byProvider[adapter.id],
+        ),
+      ),
     );
 
     await cache.save();
@@ -158,7 +208,15 @@ class DefaultQuotaService implements QuotaService {
     ProviderAdapter adapter,
     AppConfig config, {
     required bool noCache,
+    required ProviderContext ctx,
+    DetectionResult? detection,
   }) async {
+    if (detection != null && !detection.detected) {
+      return _notInstalled(
+        adapter.id,
+        detection.reason ?? 'Não encontrado nesta máquina.',
+      );
+    }
     if (!noCache) {
       final cached = cache.get(
         adapter.id,
@@ -171,7 +229,7 @@ class DefaultQuotaService implements QuotaService {
 
     final ProviderSnapshot snapshot;
     try {
-      snapshot = await adapter.read(_ctx).timeout(const Duration(seconds: 40));
+      snapshot = await adapter.read(ctx).timeout(const Duration(seconds: 40));
     } on QdeckException catch (e) {
       return _fallbackOrError(adapter.id, e);
     } on TimeoutException {
@@ -204,6 +262,23 @@ class DefaultQuotaService implements QuotaService {
     return snapshot;
   }
 
+  ProviderSnapshot _notInstalled(ProviderId id, String reason) =>
+      ProviderSnapshot(
+        provider: id,
+        account: AccountInfo(label: id.displayName),
+        windows: const [],
+        source: 'detection',
+        fetchedAt: now(),
+        confidence: Confidence.none,
+        errors: [
+          QdeckException(
+            code: QdeckErrorCode.notInstalled,
+            provider: id,
+            message: reason,
+          ).toInfo(),
+        ],
+      );
+
   ProviderSnapshot _fallbackOrError(ProviderId id, QdeckException error) {
     final stale = cache.getStale(id);
     if (stale != null) {
@@ -228,23 +303,7 @@ class DefaultQuotaService implements QuotaService {
       snapshot(providers: provider == null ? null : {provider}, noCache: true);
 
   @override
-  Future<List<DetectionResult>> detect() async {
-    final results = <DetectionResult>[];
-    for (final adapter in adapters) {
-      try {
-        results.add(await adapter.detect(_ctx));
-      } catch (_) {
-        results.add(
-          DetectionResult(
-            provider: adapter.id,
-            detected: false,
-            reason: 'Falha na detecção',
-          ),
-        );
-      }
-    }
-    return results;
-  }
+  Future<List<DetectionResult>> detect() => _detectAll(force: true);
 
   @override
   Future<List<DoctorCheck>> doctor() async {

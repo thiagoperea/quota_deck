@@ -19,7 +19,9 @@ Ele escaneia o que está instalado (Desktop e CLI), lê a credencial local de ca
 
 ## Instalar
 
-Requisitos: Flutter 3.47+ e a toolchain do seu sistema (Xcode no macOS, Visual Studio Desktop C++ no Windows, GTK/CMake/Ninja no Linux).
+**Windows (recomendado):** baixe `quota_deck-<versão>-setup.exe` na release mais recente. O instalador grava em `%LOCALAPPDATA%\Programs\QuotaDeck`, cria atalho no Menu Iniciar (e opcional na área de trabalho) e desinstalador. Não precisa de admin.
+
+**macOS/Linux ou build local:**
 
 ```bash
 git clone https://github.com/thiagoperea/quota_deck.git

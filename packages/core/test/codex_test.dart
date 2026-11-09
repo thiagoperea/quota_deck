@@ -105,6 +105,26 @@ void main() {
           stdout: 'codex 1.0.0',
           stderr: '',
         ),
+        'where codex': const ProcessResultData(
+          exitCode: 0,
+          stdout: 'C:\\tools\\codex.cmd',
+          stderr: '',
+        ),
+        'where codex.cmd': const ProcessResultData(
+          exitCode: 0,
+          stdout: 'C:\\tools\\codex.cmd',
+          stderr: '',
+        ),
+        'which codex': const ProcessResultData(
+          exitCode: 0,
+          stdout: '/usr/local/bin/codex',
+          stderr: '',
+        ),
+        'which codex.cmd': const ProcessResultData(
+          exitCode: 0,
+          stdout: '/usr/local/bin/codex',
+          stderr: '',
+        ),
       },
       sessions: {'codex app-server': session, 'codex.cmd app-server': session},
     );

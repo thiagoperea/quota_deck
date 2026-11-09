@@ -268,6 +268,8 @@ class OpenCodeProvider implements ProviderAdapter {
         p.join(env['APPDATA']!, 'ai.opencode.desktop'),
       if ((env['LOCALAPPDATA'] ?? '').isNotEmpty)
         p.join(env['LOCALAPPDATA']!, 'Programs', 'ai.opencode.desktop'),
+      if (home.isNotEmpty)
+        p.join(home, 'Library', 'Application Support', 'ai.opencode.desktop'),
       if (home.isNotEmpty) p.join(home, '.config', 'ai.opencode.desktop'),
       if (home.isNotEmpty)
         p.join(home, 'AppData', 'Roaming', 'ai.opencode.desktop'),

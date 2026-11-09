@@ -53,7 +53,7 @@ Padrões: `oc_...`, `sk-ant-...`, `sk-...`, `ya29...`, JWT (`eyJ...`), `go-keyri
 
 ## Logs e diagnóstico
 
-- Log local com rotação; nunca headers ou corpos de credencial.
+- Log local com rotação: **roadmap** hoje o log é no-op; quando existir, nunca headers/corpos de credencial.
 - `qdeck doctor` mostra presença/validade, não valores.
 - Se um token aparecer em issue/log: revogar, remover o conteúdo e adicionar teste de regressão.
 
@@ -61,7 +61,7 @@ Padrões: `oc_...`, `sk-ant-...`, `sk-...`, `ya29...`, JWT (`eyJ...`), `go-keyri
 
 - Data dir `0700`; arquivos `0600` quando o SO permite.
 - Windows não tem chmod POSIX; a proteção é a ACL do perfil do usuário.
-- “Apagar dados” remove cache, histórico e config.
+- "Apagar dados" (cache, histórico e config): **roadmap**; hoje remova `%APPDATA%\QuotaDeck` manualmente.
 
 ## Endpoints internos
 

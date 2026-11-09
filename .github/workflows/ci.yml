@@ -162,6 +162,23 @@ jobs:
           channel: stable
           cache: true
       - run: cd app; flutter pub get; flutter build windows --release
+      - name: Derive version
+        id: version
+        shell: pwsh
+        run: |
+          $m = Select-String -Path app/pubspec.yaml -Pattern '^version:\s*([0-9.]+)' | Select-Object -First 1
+          $v = $m.Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=${{ steps.version.outputs.version }}" `
+            "/DSourceDir=${{ github.workspace }}\app\build\windows\x64\runner\Release" `
+            "installer\quota_deck.iss"
       - name: Package .exe
         shell: pwsh
         run: |
@@ -171,6 +188,11 @@ jobs:
         with:
           name: quota_deck-windows
           path: quota_deck-windows.zip
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quota_deck-windows-installer
+          path: dist-installer/*.exe
           retention-days: 7
 
   build-linux:

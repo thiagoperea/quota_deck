@@ -18,14 +18,16 @@ class AntigravityProvider implements ProviderAdapter {
 
   @override
   Future<DetectionResult> detect(ProviderContext ctx) async {
-    final hub = _findHub(ctx);
-    final installedDir = Directory(
-      p.join(
-        ctx.env['LOCALAPPDATA'] ?? ctx.env['HOME'] ?? '',
-        'Programs',
-        'antigravity',
-      ),
-    ).existsSync();
+    final hub = await _findHub(ctx);
+    final home = ctx.env['HOME'] ?? ctx.env['USERPROFILE'] ?? '';
+    final installedDir =
+        Directory(
+          p.join(ctx.env['LOCALAPPDATA'] ?? home, 'Programs', 'antigravity'),
+        ).existsSync() ||
+        Directory(p.join(home, 'Applications', 'Antigravity.app'))
+            .existsSync() ||
+        Directory('/Applications/Antigravity.app').existsSync() ||
+        await ctx.discovery.which('antigravity') != null;
     final running = await ctx.discovery.isRunning(const [
       'antigravity',
       'language_server',
@@ -89,7 +91,7 @@ class AntigravityProvider implements ProviderAdapter {
 
   @override
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
-    final hub = _findHub(ctx);
+    final hub = await _findHub(ctx);
     if (hub == null) {
       final installed =
           await ctx.discovery.isRunning(const [
@@ -217,7 +219,7 @@ class AntigravityProvider implements ProviderAdapter {
   @override
   Future<List<DoctorCheck>> doctor(ProviderContext ctx) async {
     final checks = <DoctorCheck>[];
-    final hub = _findHub(ctx);
+    final hub = await _findHub(ctx);
     checks.add(
       DoctorCheck(
         provider: id,
@@ -263,7 +265,7 @@ class AntigravityProvider implements ProviderAdapter {
     return checks;
   }
 
-  File? _findHub(ProviderContext ctx) {
+  Future<File?> _findHub(ProviderContext ctx) async {
     final dir = AppPaths.antigravityDaemonDir(env: ctx.env);
     if (!dir.existsSync()) return null;
     final files = dir
@@ -275,6 +277,12 @@ class AntigravityProvider implements ProviderAdapter {
         .toList(growable: false);
     if (files.isEmpty) return null;
     files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    // Prefere o hub mais recente cujo language_server realmente está vivo.
+    for (final file in files) {
+      final meta = _readHub(file);
+      if (meta == null) continue;
+      if (await _pidAlive(ctx, meta.pid)) return file;
+    }
     return files.first;
   }
 

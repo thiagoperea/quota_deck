@@ -9,6 +9,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../version.dart';
 import '../widgets/error_card.dart';
 import '../widgets/onboarding_card.dart';
 import '../widgets/provider_card.dart';
@@ -1249,7 +1250,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final version = state.meta?.version ?? '0.4.0';
+    final version = state.meta?.version ?? appVersion;
     return Row(
       children: [
         const Spacer(),

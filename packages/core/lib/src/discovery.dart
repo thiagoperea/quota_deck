@@ -7,16 +7,29 @@ import 'process_runner.dart';
 
 /// Sondas locais baratas (sem rede) para descobrir o que está instalado.
 class SystemDiscovery {
-  SystemDiscovery(this.process, {this.env});
+  SystemDiscovery(this.process, {this.env, this.now});
 
   final ProcessRunner process;
   final Map<String, String>? env;
+  final DateTime Function()? now;
 
   Future<Set<String>>? _running;
+  DateTime? _runningAt;
   final Map<String, Future<String?>> _which = {};
 
-  Future<Set<String>> runningProcesses() =>
-      _running ??= _listRunning().catchError((_) => <String>{});
+  Future<Set<String>> runningProcesses({
+    Duration ttl = const Duration(minutes: 5),
+  }) {
+    final clock = now?.call() ?? DateTime.now();
+    final current = _running;
+    if (current != null &&
+        _runningAt != null &&
+        clock.difference(_runningAt!) <= ttl) {
+      return current;
+    }
+    _runningAt = clock;
+    return _running = _listRunning().catchError((_) => <String>{});
+  }
 
   Future<Set<String>> _listRunning() async {
     try {

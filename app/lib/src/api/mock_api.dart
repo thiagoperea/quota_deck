@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../version.dart';
 import 'quota_api.dart';
 
 /// API simulada com dados realistas dos quatro provedores.
@@ -36,7 +37,7 @@ class MockApi implements QuotaApi {
   late SnapshotEnvelope _envelope;
   int _refreshCount = 0;
 
-  static const _version = '0.4.0';
+  static const _version = appVersion;
   static const _dataDir = '~/Library/Application Support/QuotaDeck';
 
   @override
