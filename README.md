@@ -1,11 +1,14 @@
 # QuotaDeck
 
-App de bandeja para ver quanto de limite ainda resta no **OpenCode Go**, **Antigravity**, **Codex** e **Claude Code**.
+App de bandeja para ver quanto de limite ainda resta em **OpenCode**, **Antigravity**, **Codex** e **Claude**.
 
-Ele lê as credenciais que já existem na sua máquina, consulta a fonte de uso de cada ferramenta e mostra tudo em uma janela compacta. Sem login, sem proxy, sem telemetria.
+Ele escaneia o que está instalado (Desktop e CLI), lê a credencial local de cada superfície e mostra tudo em uma janela compacta. Sem login, sem proxy, sem telemetria.
 
 ## O que faz
 
+- Detecção por superfície: separa **Desktop** e **CLI**, mostra versão/caminho/conta e só exibe no assistente o que existe na máquina.
+- OpenCode lê o banco XDG (`~/.local/share/opencode/opencode.db`) ou o legado `%LOCALAPPDATA%`.
+- Claude Desktop usa o histórico local (`plan-usage-history.json`, estimado); Claude Code usa a API OAuth ao vivo.
 - Ícone na bandeja e assistente guiado por provedor, com instruções de login/refresh.
 - Provedor mais usado, próximo reset e uso disponível estimado no topo.
 - Clique abre a janela compacta; menu abre o dashboard ou atualiza.
