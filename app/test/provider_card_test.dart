@@ -44,7 +44,7 @@ void main() {
     );
     await _pumpCard(tester, snapshot);
 
-    expect(find.text('OpenCode Go'), findsOneWidget);
+    expect(find.text('OpenCode'), findsOneWidget);
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('Rolling 5h'), findsOneWidget);
     expect(find.text('Semanal (7d)'), findsOneWidget);

@@ -66,22 +66,47 @@ class AppPaths {
   }
 
   static File openCodeDb({Map<String, String>? env}) {
-    final e = env ?? Platform.environment;
-    final override = e['QDECK_OPENCODE_DB'];
-    if (override != null && override.isNotEmpty) return File(override);
-    final home = e['HOME'] ?? e['USERPROFILE'] ?? '';
-    if (Platform.isWindows) {
-      final localAppData = e['LOCALAPPDATA'];
-      final base = localAppData != null && localAppData.isNotEmpty
-          ? p.join(localAppData, 'opencode')
-          : p.join(home, 'AppData', 'Local', 'opencode');
-      return File(p.join(base, 'opencode.db'));
+    final candidates = openCodeDbs(env: env);
+    for (final candidate in candidates) {
+      if (candidate.existsSync()) return candidate;
     }
+    return candidates.first;
+  }
+
+  /// O OpenCode 2.x grava em XDG (`~/.local/share/opencode`) mesmo no Windows;
+  /// builds antigos usavam `%LOCALAPPDATA%`. Ordem: override, XDG, legado.
+  static List<File> openCodeDbs({Map<String, String>? env}) {
+    final e = env ?? Platform.environment;
+    final home = e['HOME'] ?? e['USERPROFILE'] ?? '';
+    final files = <File>[];
+
+    final override = e['QDECK_OPENCODE_DB'];
+    if (override != null && override.isNotEmpty) files.add(File(override));
+
     final xdg = e['XDG_DATA_HOME'];
-    final base = xdg != null && xdg.isNotEmpty
-        ? p.join(xdg, 'opencode')
-        : p.join(home, '.local', 'share', 'opencode');
-    return File(p.join(base, 'opencode.db'));
+    if (xdg != null && xdg.isNotEmpty) {
+      files.add(File(p.join(xdg, 'opencode', 'opencode.db')));
+    }
+    files.add(File(p.join(home, '.local', 'share', 'opencode', 'opencode.db')));
+
+    final localAppData = e['LOCALAPPDATA'];
+    if (localAppData != null && localAppData.isNotEmpty) {
+      files.add(File(p.join(localAppData, 'opencode', 'opencode.db')));
+    }
+    files.add(
+      File(p.join(home, 'AppData', 'Local', 'opencode', 'opencode.db')),
+    );
+
+    final appData = e['APPDATA'];
+    if (appData != null && appData.isNotEmpty) {
+      files.add(File(p.join(appData, 'opencode', 'opencode.db')));
+    }
+    files.add(
+      File(p.join(home, 'AppData', 'Roaming', 'opencode', 'opencode.db')),
+    );
+
+    final seen = <String>{};
+    return files.where((f) => seen.add(f.path)).toList(growable: false);
   }
 
   static File codexAuth({Map<String, String>? env}) {
@@ -118,5 +143,69 @@ class AppPaths {
     final e = env ?? Platform.environment;
     final home = e['HOME'] ?? e['USERPROFILE'] ?? '';
     return File(p.join(home, '.gemini', 'jetski-standalone-oauth-token'));
+  }
+
+  /// Diretórios de dados do Claude Desktop (Electron/MSIX).
+  static List<Directory> claudeDesktopDirs({Map<String, String>? env}) {
+    final e = env ?? Platform.environment;
+    final home = e['HOME'] ?? e['USERPROFILE'] ?? '';
+    final dirs = <Directory>[];
+
+    final localAppData = e['LOCALAPPDATA'];
+    if (localAppData != null && localAppData.isNotEmpty) {
+      final dataRoot = Directory(p.join(localAppData, 'Claude-Data'));
+      if (dataRoot.existsSync()) {
+        for (final entry in dataRoot.listSync(followLinks: false)) {
+          if (entry is Directory &&
+              p.basename(entry.path).startsWith('claude_')) {
+            dirs.add(entry);
+          }
+        }
+      }
+      if (dirs.isEmpty) dirs.add(dataRoot);
+    }
+    dirs.add(Directory(p.join(home, 'AppData', 'Local', 'Claude-Data')));
+
+    if (Platform.isMacOS) {
+      dirs.add(
+        Directory(p.join(home, 'Library', 'Application Support', 'Claude')),
+      );
+    } else if (Platform.isLinux) {
+      dirs.add(Directory(p.join(home, '.config', 'Claude')));
+    }
+
+    final seen = <String>{};
+    return dirs.where((d) => seen.add(d.path)).toList(growable: false);
+  }
+
+  /// Histórico de uso que o Claude Desktop grava localmente.
+  static List<File> claudeDesktopUsageFiles({Map<String, String>? env}) {
+    final files = <File>[];
+    for (final dir in claudeDesktopDirs(env: env)) {
+      files.add(File(p.join(dir.path, 'plan-usage-history.json')));
+      files.add(File(p.join(dir.path, 'config.json')));
+    }
+    return files;
+  }
+
+  /// Binário do Claude Code empacotado dentro do Claude Desktop.
+  static List<File> bundledClaudeBinaries({Map<String, String>? env}) {
+    final e = env ?? Platform.environment;
+    final home = e['HOME'] ?? e['USERPROFILE'] ?? '';
+    final files = <File>[];
+    final exe = Platform.isWindows ? 'claude.exe' : 'claude';
+    for (final dir in claudeDesktopDirs(env: env)) {
+      final cliRoot = Directory(p.join(dir.path, 'claude-code'));
+      if (!cliRoot.existsSync()) continue;
+      for (final version in cliRoot.listSync(followLinks: false)) {
+        if (version is! Directory) continue;
+        for (final hash in version.listSync(followLinks: false)) {
+          if (hash is! Directory) continue;
+          files.add(File(p.join(hash.path, exe)));
+        }
+      }
+    }
+    files.add(File(p.join(home, '.local', 'bin', exe)));
+    return files;
   }
 }

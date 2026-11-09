@@ -394,6 +394,21 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  String _surfaceSummary(ProviderId provider) {
+    final detection = widget.state.detectionFor(provider);
+    if (detection == null || detection.surfaces.isEmpty) {
+      return 'Detectando superfícies…';
+    }
+    final installed = detection.installedSurfaces;
+    if (installed.isEmpty) return 'Não instalado';
+    return installed
+        .map(
+          (s) =>
+              '${s.surface.label} (${s.authenticated ? 'conectado' : 'login'})',
+        )
+        .join(' · ');
+  }
+
   Widget _providerTile(ProviderId provider, {required bool showDivider}) {
     final palette = QdPalette.of(context);
     return Column(
@@ -411,6 +426,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
               fontSize: 12.5,
               fontWeight: FontWeight.w500,
             ),
+          ),
+          subtitle: Text(
+            _surfaceSummary(provider),
+            style: TextStyle(color: palette.muted, fontSize: 10),
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),

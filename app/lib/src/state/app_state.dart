@@ -38,6 +38,9 @@ class AppState extends ChangeNotifier {
   final Map<String, HistorySummary> _history = {};
   bool _loadingHistory = false;
   bool _wizardVisible = false;
+  bool _detecting = false;
+  Future<void>? _detectionFuture;
+  List<DetectionResult> _detections = const [];
   List<DoctorCheck> _doctorChecks = const [];
 
   SnapshotEnvelope? get envelope => _envelope;
@@ -49,6 +52,20 @@ class AppState extends ChangeNotifier {
   bool get hasData => _envelope != null;
   String? get error => _error;
   List<DoctorCheck> get doctorChecks => _doctorChecks;
+  List<DetectionResult> get detections => _detections;
+  bool get detecting => _detecting;
+
+  DetectionResult? detectionFor(ProviderId provider) {
+    for (final detection in _detections) {
+      if (detection.provider == provider) return detection;
+    }
+    return null;
+  }
+
+  List<ProviderId> get installedProviders => [
+    for (final detection in _detections)
+      if (detection.detected) detection.provider,
+  ];
 
   bool get hasProvidersEnabled =>
       ProviderId.values.any((provider) => _config.isEnabled(provider));
@@ -80,7 +97,15 @@ class AppState extends ChangeNotifier {
   List<ProviderSnapshot> get visibleSnapshots {
     final results = _envelope?.results ?? const <ProviderSnapshot>[];
     final enabled = results
-        .where((snapshot) => _config.isEnabled(snapshot.provider))
+        .where((snapshot) {
+          if (!_config.isEnabled(snapshot.provider)) return false;
+          final surface = snapshot.surface;
+          if (surface != null &&
+              !_config.isSurfaceEnabled(snapshot.provider, surface)) {
+            return false;
+          }
+          return true;
+        })
         .toList(growable: false);
     enabled.sort((a, b) => a.provider.index.compareTo(b.provider.index));
     return enabled;
@@ -174,6 +199,7 @@ class AppState extends ChangeNotifier {
       _initialized = true;
       _safeNotify();
       await _loadFeaturedHistory();
+      unawaited(detectProviders());
     } on ApiException catch (error) {
       _error = error.message;
     } catch (_) {
@@ -259,6 +285,22 @@ class AppState extends ChangeNotifier {
       _doctorChecks = const [];
     }
     _safeNotify();
+  }
+
+  Future<void> detectProviders() => _detectionFuture ??= _runDetection();
+
+  Future<void> _runDetection() async {
+    _detecting = true;
+    _safeNotify();
+    try {
+      _detections = await _api.detect();
+    } catch (_) {
+      // Detecção é complementar: mantém o que já havia.
+    } finally {
+      _detecting = false;
+      _detectionFuture = null;
+      _safeNotify();
+    }
   }
 
   Future<void> _loadFeaturedHistory({bool force = false}) async {

@@ -25,6 +25,13 @@ void main() {
     expect(state.estimatedAvailablePercent, isNotNull);
     expect(state.enabledProviderCount, 4);
     expect(state.config.onboardingCompleted, isFalse);
+
+    await state.detectProviders();
+    expect(state.detections, hasLength(4));
+    expect(state.installedProviders, hasLength(4));
+    final claude = state.detectionFor(ProviderId.claude);
+    expect(claude, isNotNull);
+    expect(claude!.installedSurfaces, isNotEmpty);
   });
 
   test('refresh atualiza o envelope sem perder os cards', () async {

@@ -14,6 +14,7 @@ class MockApi implements QuotaApi {
     this.failRefresh = false,
     this.failSettings = false,
     this.empty = false,
+    this.installedProviders,
     AppConfig? config,
   }) : _config =
            config ??
@@ -29,12 +30,13 @@ class MockApi implements QuotaApi {
   final bool failRefresh;
   final bool failSettings;
   final bool empty;
+  final Set<ProviderId>? installedProviders;
 
   AppConfig _config;
   late SnapshotEnvelope _envelope;
   int _refreshCount = 0;
 
-  static const _version = '0.1.0';
+  static const _version = '0.2.0';
   static const _dataDir = '~/Library/Application Support/QuotaDeck';
 
   @override
@@ -51,14 +53,64 @@ class MockApi implements QuotaApi {
         version: _version,
         dataDir: _dataDir,
         providers: [
-          ApiProviderInfo(id: ProviderId.opencode, name: 'OpenCode Go'),
+          ApiProviderInfo(id: ProviderId.opencode, name: 'OpenCode'),
           ApiProviderInfo(id: ProviderId.antigravity, name: 'Antigravity'),
           ApiProviderInfo(id: ProviderId.codex, name: 'Codex'),
-          ApiProviderInfo(id: ProviderId.claude, name: 'Claude Code'),
+          ApiProviderInfo(id: ProviderId.claude, name: 'Claude'),
         ],
       ),
     );
   }
+
+  @override
+  Future<List<DetectionResult>> detect() async {
+    if (empty) {
+      return [
+        for (final id in ProviderId.values)
+          DetectionResult.fromSurfaces(
+            provider: id,
+            surfaces: const [
+              SurfaceState(surface: ProviderSurface.desktop, installed: false),
+              SurfaceState(surface: ProviderSurface.cli, installed: false),
+            ],
+          ),
+      ];
+    }
+    return [
+      for (final id in ProviderId.values)
+        DetectionResult.fromSurfaces(
+          provider: id,
+          surfaces: [
+            SurfaceState(
+              surface: ProviderSurface.desktop,
+              installed: _isInstalled(id),
+              authenticated: _isInstalled(id) && !_hasError(id),
+              version: _isInstalled(id) ? 'mock' : null,
+              location: _isInstalled(id) ? '~/mock/${id.wireName}' : null,
+              reason: _isInstalled(id)
+                  ? 'Superfície simulada para testes de UI.'
+                  : 'Não instalado (mock).',
+            ),
+            SurfaceState(
+              surface: ProviderSurface.cli,
+              installed: _isInstalled(id) && id != ProviderId.antigravity,
+              authenticated:
+                  _isInstalled(id) &&
+                  id != ProviderId.antigravity &&
+                  !_hasError(id),
+              location: _isInstalled(id) ? 'mock-cli' : null,
+              reason: 'CLI simulada.',
+            ),
+          ],
+        ),
+    ];
+  }
+
+  bool _isInstalled(ProviderId id) => installedProviders?.contains(id) ?? true;
+
+  bool _hasError(ProviderId id) => _envelope.results
+      .where((r) => r.provider == id)
+      .any((r) => r.errors.isNotEmpty);
 
   @override
   Future<SnapshotEnvelope> refresh({ProviderId? provider}) async {
@@ -207,7 +259,24 @@ class MockApi implements QuotaApi {
 
     return SnapshotEnvelope(
       generatedAt: now,
-      results: [_opencode(now), _antigravity(now), _codex(now), _claude(now)],
+      results: [
+        _opencode(now).copyWith(
+          surface: ProviderSurface.desktop,
+          sourceId: 'opencode-usage-api',
+        ),
+        _antigravity(now).copyWith(
+          surface: ProviderSurface.desktop,
+          sourceId: 'antigravity-language-server',
+        ),
+        _codex(now).copyWith(
+          surface: ProviderSurface.desktop,
+          sourceId: 'codex-wham-usage',
+        ),
+        _claude(now).copyWith(
+          surface: ProviderSurface.cli,
+          sourceId: 'claude-oauth-usage',
+        ),
+      ],
       errors: const [],
     );
   }

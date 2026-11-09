@@ -9,8 +9,8 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'provider_card.dart';
 
-/// Assistente de configuração: mostra um provedor por vez, permite ativar,
-/// explica o login/refresh e valida a credencial na hora.
+/// Assistente dirigido por detecção: mostra só o que está instalado,
+/// com uma linha por superfície (desktop/CLI) e instruções específicas.
 Future<void> showProviderWizard(
   BuildContext context, {
   bool firstRun = false,
@@ -18,6 +18,8 @@ Future<void> showProviderWizard(
   final state = context.read<AppState>();
   if (!state.tryClaimWizard()) return;
   try {
+    await state.detectProviders();
+    if (!context.mounted) return;
     await showDialog<void>(
       context: context,
       barrierDismissible: !firstRun,
@@ -43,14 +45,27 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   late Map<String, bool> _providers = {...widget.state.config.providers};
   final Set<ProviderId> _checking = <ProviderId>{};
   int _index = 0;
+  bool _showAll = false;
   bool _saving = false;
   String? _error;
 
-  int get _totalSteps => ProviderId.values.length + 1;
+  List<ProviderId> get _steps {
+    final installed = widget.state.installedProviders.toSet();
+    if (_showAll || installed.isEmpty) {
+      return ProviderId.values;
+    }
+    return [
+      for (final provider in ProviderId.values)
+        if (installed.contains(provider)) provider,
+    ];
+  }
 
-  bool get _isSummary => _index == ProviderId.values.length;
+  int get _totalSteps => _steps.length + 1;
 
-  ProviderId get _current => ProviderId.values[_index];
+  bool get _isSummary => _index >= _steps.length;
+
+  ProviderId get _current =>
+      _steps[_index < _steps.length ? _index : _steps.length - 1];
 
   bool _isEnabled(ProviderId provider) => _providers[provider.wireName] ?? true;
 
@@ -70,6 +85,12 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   }
 
   _ProviderStatus _statusFor(ProviderId provider) {
+    final detection = widget.state.detectionFor(provider);
+    if (detection != null) {
+      if (detection.authenticated) return _ProviderStatus.connected;
+      if (detection.detected) return _ProviderStatus.signInNeeded;
+      return _ProviderStatus.notDetected;
+    }
     final snapshot = _snapshotFor(provider);
     if (snapshot == null) return _ProviderStatus.notDetected;
     final authError = snapshot.errors.any(
@@ -86,7 +107,10 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   Future<void> _verify(ProviderId provider) async {
     if (_checking.contains(provider)) return;
     setState(() => _checking.add(provider));
-    await widget.state.refresh(provider: provider);
+    await Future.wait([
+      widget.state.detectProviders(),
+      widget.state.refresh(provider: provider),
+    ]);
     if (!mounted) return;
     setState(() => _checking.remove(provider));
   }
@@ -240,8 +264,8 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                 const SizedBox(height: 2),
                 Text(
                   widget.firstRun
-                      ? 'Um provedor por vez: ative, conecte e siga.'
-                      : 'Revise quem aparece no painel e como renovar o login.',
+                      ? 'Detectamos o que está instalado. Um provedor por vez.'
+                      : 'Revise o que aparece no painel e como renovar o login.',
                   style: TextStyle(color: palette.muted, fontSize: 10.5),
                 ),
               ],
@@ -259,6 +283,9 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   }
 
   Widget _progress(QdPalette palette) {
+    final stepLabel = _isSummary
+        ? 'Resumo · etapa ${_index + 1} de $_totalSteps'
+        : 'Etapa ${_index + 1} de $_totalSteps';
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
       child: Column(
@@ -268,9 +295,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
             children: [
               Expanded(
                 child: Text(
-                  _isSummary
-                      ? 'Resumo · etapa ${_index + 1} de $_totalSteps'
-                      : 'Etapa ${_index + 1} de $_totalSteps',
+                  stepLabel,
                   style: TextStyle(
                     color: palette.muted,
                     fontSize: 9.5,
@@ -278,10 +303,13 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                   ),
                 ),
               ),
-              Text(
-                '${((_index + 1) / _totalSteps * 100).round()}%',
-                style: TextStyle(color: palette.dim, fontSize: 9),
-              ),
+              if (widget.state.detecting)
+                Icon(Icons.radar, size: 11, color: palette.dim)
+              else
+                Text(
+                  '${((_index + 1) / _totalSteps * 100).round()}%',
+                  style: TextStyle(color: palette.dim, fontSize: 9),
+                ),
             ],
           ),
           const SizedBox(height: 5),
@@ -301,6 +329,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
 
   Widget _providerStep(QdPalette palette, ProviderId provider) {
     final guide = _guideFor(provider);
+    final detection = widget.state.detectionFor(provider);
     final status = _statusFor(provider);
     final enabled = _isEnabled(provider);
     final checking = _checking.contains(provider);
@@ -369,15 +398,20 @@ class _ProviderWizardState extends State<_ProviderWizard> {
           ),
         ],
         const SizedBox(height: 14),
-        Text(
-          'COMO CONECTAR',
-          style: TextStyle(
-            color: palette.dim,
-            fontSize: 8.5,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.9,
-          ),
-        ),
+        _sectionLabel(palette, 'SUPERFÍCIES DETECTADAS'),
+        const SizedBox(height: 7),
+        if (detection == null || detection.surfaces.isEmpty)
+          Text(
+            'Detecção ainda não rodou para este provedor.',
+            style: TextStyle(color: palette.dim, fontSize: 10),
+          )
+        else
+          for (final surface in detection.surfaces) ...[
+            _SurfaceRow(surface: surface),
+            const SizedBox(height: 6),
+          ],
+        const SizedBox(height: 6),
+        _sectionLabel(palette, 'COMO CONECTAR'),
         const SizedBox(height: 7),
         for (var i = 0; i < guide.steps.length; i++) ...[
           if (i > 0) const SizedBox(height: 6),
@@ -441,8 +475,24 @@ class _ProviderWizardState extends State<_ProviderWizard> {
     );
   }
 
+  Widget _sectionLabel(QdPalette palette, String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: palette.dim,
+        fontSize: 8.5,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.9,
+      ),
+    );
+  }
+
   Widget _summary(QdPalette palette) {
     final enabled = ProviderId.values.where(_isEnabled).toList(growable: false);
+    final hidden = [
+      for (final provider in ProviderId.values)
+        if (!_steps.contains(provider)) provider,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -467,11 +517,32 @@ class _ProviderWizardState extends State<_ProviderWizard> {
             provider: provider,
             enabled: _isEnabled(provider),
             status: _statusFor(provider),
+            detection: widget.state.detectionFor(provider),
             onChanged: (value) => _setEnabled(provider, value),
           ),
           if (provider != ProviderId.values.last) const SizedBox(height: 8),
         ],
-        const SizedBox(height: 12),
+        if (hidden.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          TextButton.icon(
+            key: const Key('wizard-show-all'),
+            onPressed: () => setState(() {
+              _showAll = true;
+              _index = 0;
+            }),
+            icon: const Icon(Icons.search, size: 14),
+            label: Text(
+              'Mostrar ${hidden.length} provedor'
+              '${hidden.length == 1 ? '' : 'es'} não detectado'
+              '${hidden.length == 1 ? '' : 's'}',
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: palette.muted,
+              textStyle: const TextStyle(fontSize: 10.5),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
@@ -599,24 +670,125 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+class _SurfaceRow extends StatelessWidget {
+  const _SurfaceRow({required this.surface});
+
+  final SurfaceState surface;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    final color = surface.authenticated
+        ? palette.green
+        : surface.installed
+        ? palette.yellow
+        : palette.dim;
+    final state = surface.authenticated
+        ? 'conectado'
+        : surface.installed
+        ? 'login necessário'
+        : 'ausente';
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: palette.panel2,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: color.withValues(alpha: 0.35)),
+            ),
+            child: Text(
+              surface.surface.label,
+              style: TextStyle(
+                color: color,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      state,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (surface.version != null)
+                      Text(
+                        'v${surface.version}',
+                        style: TextStyle(color: palette.dim, fontSize: 9),
+                      ),
+                    if (!surface.live)
+                      Text(
+                        'histórico',
+                        style: TextStyle(color: palette.blue, fontSize: 9),
+                      ),
+                  ],
+                ),
+                if ((surface.reason ?? '').isNotEmpty)
+                  Text(
+                    surface.reason!,
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontSize: 9.5,
+                      height: 1.3,
+                    ),
+                  ),
+                if ((surface.location ?? '').isNotEmpty)
+                  Text(
+                    surface.location!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: palette.dim, fontSize: 8.5),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({
     required this.provider,
     required this.enabled,
     required this.status,
+    required this.detection,
     required this.onChanged,
   });
 
   final ProviderId provider;
   final bool enabled;
   final _ProviderStatus status;
+  final DetectionResult? detection;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
+    final surfaces = detection?.installedSurfaces ?? const <SurfaceState>[];
     return Container(
-      padding: const EdgeInsets.fromLTRB(9, 4, 4, 4),
+      padding: const EdgeInsets.fromLTRB(9, 6, 4, 6),
       decoration: BoxDecoration(
         color: palette.panel2,
         borderRadius: BorderRadius.circular(10),
@@ -630,13 +802,30 @@ class _SummaryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  provider.displayName,
-                  style: TextStyle(
-                    color: enabled ? palette.text : palette.dim,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Wrap(
+                  spacing: 5,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      provider.displayName,
+                      style: TextStyle(
+                        color: enabled ? palette.text : palette.dim,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    for (final surface in surfaces)
+                      Text(
+                        surface.surface.label,
+                        style: TextStyle(
+                          color: surface.authenticated
+                              ? palette.green
+                              : palette.yellow,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
                 ),
                 _StatusChip(status: status),
               ],
@@ -753,50 +942,49 @@ class _ProviderGuide {
 _ProviderGuide _guideFor(ProviderId provider) => switch (provider) {
   ProviderId.opencode => const _ProviderGuide(
     summary:
-        'Lê o banco local do OpenCode Go e a credencial da sessão para '
-        'calcular as janelas de quota.',
+        'Lê o banco local do OpenCode (desktop ou CLI) e consulta a API de uso '
+        'do plano Go/Zen.',
     command: 'opencode',
     steps: [
-      'Rode opencode no terminal uma vez.',
-      'Faça login no provedor quando o CLI pedir.',
-      'A sessão fica em %LOCALAPPDATA%\\opencode\\opencode.db (Windows) '
-          'ou ~/.local/share/opencode/opencode.db.',
+      'Desktop: abra o OpenCode e faça login na conta certa.',
+      'CLI: rode opencode no terminal e faça login.',
+      'O banco fica em ~/.local/share/opencode/opencode.db (ou XDG_DATA_HOME).',
     ],
-    hint: 'Se a credencial expirar, abra o OpenCode Go de novo.',
+    hint: 'Desktop e CLI compartilham o mesmo banco.',
   ),
   ProviderId.antigravity => const _ProviderGuide(
     summary:
-        'Converte o RPC local do Antigravity (language_server) em janelas '
-        'de quota para Gemini e Claude/GPT.',
+        'Converte o RPC local do Antigravity (language_server) em janelas de '
+        'quota para Gemini e Claude/GPT.',
     steps: [
       'Abra o app Antigravity e faça login.',
       'Mantenha o Antigravity aberto: o QuotaDeck lê o RPC em 127.0.0.1.',
       'Sem dados? Feche e abra o Antigravity para reiniciar o language_server.',
     ],
-    hint: 'O Antigravity precisa estar rodando.',
+    hint: 'Só existe superfície desktop.',
   ),
   ProviderId.codex => const _ProviderGuide(
     summary:
-        'Lê ~/.codex/auth.json (ou CODEX_HOME) e consulta o endpoint de uso '
-        'do Codex.',
+        'Usa o auth.json compartilhado entre Codex desktop e CLI e consulta o '
+        'uso pelo app-server ou wham.',
     command: 'codex',
     steps: [
-      'Rode codex no terminal e faça login.',
-      'Se a sessão expirar, rode codex login de novo.',
-      'O QuotaDeck não renova o token sozinho.',
+      'Abra o Codex (desktop) ou rode codex no terminal e faça login.',
+      'A sessão fica em ~/.codex/auth.json (ou CODEX_HOME).',
+      'Se expirar, refaça o login na mesma superfície.',
     ],
-    hint: 'Sessão expirada volta a funcionar após o login.',
+    hint: 'Desktop e CLI compartilham a mesma sessão.',
   ),
   ProviderId.claude => const _ProviderGuide(
     summary:
-        'Lê a credencial OAuth do Claude Code e consulta o uso das janelas '
-        'de 5 horas e semanal.',
+        'Claude Desktop: histórico local (estimado, sem reset). Claude Code: '
+        'API ao vivo com reset.',
     command: 'claude',
     steps: [
-      'Rode claude no terminal e faça login.',
-      'Quando o token expirar, abra o Claude Code para renovar.',
-      'Windows/Linux: ~/.claude/.credentials.json. macOS: Keychain.',
+      'Desktop: mantenha o app aberto para o histórico ser atualizado.',
+      'Ao vivo: rode claude no terminal e faça login (OAuth do Claude Code).',
+      'O CLI também vem embutido no Claude Desktop, em Claude-Data\\...\\claude-code.',
     ],
-    hint: 'O refresh automático é opt-in nas configurações.',
+    hint: 'Histórico é estimado; API do CLI é a fonte precisa.',
   ),
 };

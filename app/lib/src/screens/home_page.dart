@@ -174,6 +174,9 @@ class _HomePageState extends State<HomePage> {
       ProviderId.claude => 'claude',
       ProviderId.antigravity => null,
     };
+    final desktopHistory =
+        provider == ProviderId.claude &&
+        snapshot.surface == ProviderSurface.desktop;
 
     await showDialog<void>(
       context: context,
@@ -186,8 +189,11 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'O QuotaDeck não renova tokens automaticamente. '
-                'Abra o aplicativo original para renovar o login.',
+                desktopHistory
+                    ? 'O Claude Desktop só expõe o histórico local (estimado). '
+                          'Para dados ao vivo com reset, faça login no Claude Code.'
+                    : 'O QuotaDeck não renova tokens automaticamente. '
+                          'Abra a ferramenta original para renovar o login.',
               ),
               const SizedBox(height: 12),
               if (command != null) ...[
@@ -1061,7 +1067,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final version = state.meta?.version ?? '0.1.2';
+    final version = state.meta?.version ?? '0.2.0';
     return Row(
       children: [
         const Spacer(),

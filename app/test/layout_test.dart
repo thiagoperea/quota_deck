@@ -12,6 +12,7 @@ Future<AppState> _pumpApp(
   required Size size,
   bool empty = false,
   bool onboarded = true,
+  Set<ProviderId>? installed,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -21,6 +22,7 @@ Future<AppState> _pumpApp(
   final state = AppState(
     MockApi(
       empty: empty,
+      installedProviders: installed,
       config: AppConfig.defaults().copyWith(
         theme: 'dark',
         refreshSeconds: 0,
@@ -134,6 +136,31 @@ void main() {
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
     expect(find.text('Configurar provedores'), findsOneWidget);
     expect(find.byKey(const Key('wizard-toggle-opencode')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('assistente lista só provedores detectados', (tester) async {
+    await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      onboarded: false,
+      installed: {ProviderId.opencode, ProviderId.codex},
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+    expect(find.text('OpenCode'), findsOneWidget);
+    expect(find.text('Claude'), findsNothing);
+    expect(find.text('Antigravity'), findsNothing);
+
+    // opencode -> codex -> resumo
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('Codex'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wizard-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('wizard-show-all')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

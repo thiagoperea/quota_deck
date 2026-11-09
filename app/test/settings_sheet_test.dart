@@ -39,7 +39,7 @@ void main() {
     await _pumpSheet(tester, state);
 
     expect(find.text('Configurações'), findsOneWidget);
-    expect(find.text('OpenCode Go'), findsOneWidget);
+    expect(find.text('OpenCode'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('settings-provider-opencode')));
     await tester.pump();

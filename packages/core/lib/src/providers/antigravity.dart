@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+import 'package:path/path.dart' as p;
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../errors.dart';
@@ -18,32 +19,71 @@ class AntigravityProvider implements ProviderAdapter {
   @override
   Future<DetectionResult> detect(ProviderContext ctx) async {
     final hub = _findHub(ctx);
+    final installedDir = Directory(
+      p.join(
+        ctx.env['LOCALAPPDATA'] ?? ctx.env['HOME'] ?? '',
+        'Programs',
+        'antigravity',
+      ),
+    ).existsSync();
+    final running = await ctx.discovery.isRunning(const [
+      'antigravity',
+      'language_server',
+    ]);
+    SurfaceState surface({
+      required bool authenticated,
+      String? reason,
+      String? location,
+    }) => SurfaceState(
+      surface: ProviderSurface.desktop,
+      installed: hub != null || installedDir || running,
+      authenticated: authenticated,
+      live: true,
+      location: location,
+      reason: reason,
+      action: authenticated
+          ? null
+          : 'Abra o Antigravity, faça login e mantenha o app aberto.',
+    );
+
     if (hub == null) {
-      return const DetectionResult(
-        provider: ProviderId.antigravity,
-        detected: false,
-        reason: 'Daemon do Antigravity não encontrado.',
+      return DetectionResult.fromSurfaces(
+        provider: id,
+        surfaces: [
+          surface(
+            authenticated: false,
+            reason: installedDir || running
+                ? 'Antigravity instalado, sem daemon/hub ativo.'
+                : 'Antigravity não encontrado.',
+          ),
+        ],
       );
     }
     final meta = _readHub(hub);
     if (meta == null) {
-      return const DetectionResult(
-        provider: ProviderId.antigravity,
-        detected: false,
-        reason: 'hub do Antigravity ilegível.',
+      return DetectionResult.fromSurfaces(
+        provider: id,
+        surfaces: [
+          surface(
+            authenticated: false,
+            location: AppPaths.maskPath(hub.path, env: ctx.env),
+            reason: 'hub do Antigravity ilegível.',
+          ),
+        ],
       );
     }
-    if (!await _pidAlive(ctx, meta.pid)) {
-      return DetectionResult(
-        provider: ProviderId.antigravity,
-        detected: false,
-        reason: 'Antigravity não está em execução (pid ${meta.pid}).',
-      );
-    }
-    return const DetectionResult(
-      provider: ProviderId.antigravity,
-      detected: true,
-      reason: 'language_server/hub ativo.',
+    final alive = await _pidAlive(ctx, meta.pid);
+    return DetectionResult.fromSurfaces(
+      provider: id,
+      surfaces: [
+        surface(
+          authenticated: alive,
+          location: AppPaths.maskPath(hub.path, env: ctx.env),
+          reason: alive
+              ? 'language_server/hub ativo.'
+              : 'Antigravity não está em execução (pid ${meta.pid}).',
+        ),
+      ],
     );
   }
 
@@ -151,6 +191,8 @@ class AntigravityProvider implements ProviderAdapter {
       account: const AccountInfo(label: 'Antigravity'),
       windows: windows,
       source: 'antigravity-language-server',
+      sourceId: 'antigravity-language-server',
+      surface: ProviderSurface.desktop,
       fetchedAt: ctx.now(),
       confidence: Confidence.high,
     );

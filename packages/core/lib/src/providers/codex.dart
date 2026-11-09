@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../errors.dart';
@@ -19,25 +20,58 @@ class CodexProvider implements ProviderAdapter {
   @override
   Future<DetectionResult> detect(ProviderContext ctx) async {
     final auth = AppPaths.codexAuth(env: ctx.env);
-    if (await auth.exists()) {
-      return const DetectionResult(
-        provider: ProviderId.codex,
-        detected: true,
-        reason: 'auth.json encontrado.',
-      );
-    }
-    if (await _binaryAvailable(ctx)) {
-      return const DetectionResult(
-        provider: ProviderId.codex,
-        detected: true,
-        reason: 'Binário codex encontrado; auth pode estar no keyring.',
-      );
-    }
-    return const DetectionResult(
-      provider: ProviderId.codex,
-      detected: false,
-      reason: 'Codex não autenticado e binário não encontrado.',
+    final hasAuth = await auth.exists();
+    final binary = await ctx.discovery.firstBinary(const [
+      'codex',
+      'codex.cmd',
+    ]);
+    final running = await ctx.discovery.isRunning(const ['codex']);
+    final desktopDir = _desktopDir(ctx);
+    final desktopInstalled = desktopDir != null || running;
+    return DetectionResult.fromSurfaces(
+      provider: id,
+      surfaces: [
+        SurfaceState(
+          surface: ProviderSurface.desktop,
+          installed: desktopInstalled,
+          authenticated: hasAuth,
+          live: true,
+          location: desktopDir == null
+              ? (running ? 'processo codex' : null)
+              : AppPaths.maskPath(desktopDir, env: ctx.env),
+          reason: hasAuth
+              ? 'Sessão em auth.json compartilhada com o app desktop.'
+              : 'Codex Desktop detectado, sem auth.json.',
+          action: hasAuth ? null : 'Abra o Codex e faça login.',
+        ),
+        SurfaceState(
+          surface: ProviderSurface.cli,
+          installed: binary != null || hasAuth,
+          authenticated: hasAuth,
+          live: true,
+          location: binary,
+          reason: hasAuth
+              ? 'CLI usa o mesmo auth.json.'
+              : 'CLI detectada; auth.json ausente (pode estar no keyring).',
+          action: hasAuth ? null : 'Rode codex no terminal e faça login.',
+        ),
+      ],
     );
+  }
+
+  String? _desktopDir(ProviderContext ctx) {
+    final local = ctx.env['LOCALAPPDATA'];
+    if (local == null || local.isEmpty) return null;
+    final dir = Directory(p.join(local, 'OpenAI', 'Codex'));
+    return dir.existsSync() ? dir.path : null;
+  }
+
+  Future<ProviderSurface> _surfaceOf(ProviderContext ctx) async {
+    if (_desktopDir(ctx) != null ||
+        await ctx.discovery.isRunning(const ['codex'])) {
+      return ProviderSurface.desktop;
+    }
+    return ProviderSurface.cli;
   }
 
   @override
@@ -287,6 +321,8 @@ class CodexProvider implements ProviderAdapter {
       windows: windows,
       credits: creditsInfo,
       source: 'codex-wham-usage',
+      sourceId: 'codex-wham-usage',
+      surface: await _surfaceOf(ctx),
       fetchedAt: ctx.now(),
       confidence: Confidence.medium,
     );
@@ -424,6 +460,8 @@ class CodexProvider implements ProviderAdapter {
                 note: '$resetCount resets disponíveis',
               ),
         source: 'codex-app-server',
+        sourceId: 'codex-app-server',
+        surface: await _surfaceOf(ctx),
         fetchedAt: ctx.now(),
         confidence: Confidence.high,
       );
