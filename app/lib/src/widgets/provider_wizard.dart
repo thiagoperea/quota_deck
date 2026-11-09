@@ -260,10 +260,31 @@ class _ProviderWizardState extends State<_ProviderWizard> {
 
   Widget _progress(QdPalette palette) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _isSummary
+                      ? 'Resumo · etapa ${_index + 1} de $_totalSteps'
+                      : 'Etapa ${_index + 1} de $_totalSteps',
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '${((_index + 1) / _totalSteps * 100).round()}%',
+                style: TextStyle(color: palette.dim, fontSize: 9),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
@@ -272,13 +293,6 @@ class _ProviderWizardState extends State<_ProviderWizard> {
               backgroundColor: palette.panel2,
               valueColor: AlwaysStoppedAnimation<Color>(palette.green),
             ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            _isSummary
-                ? 'Resumo · etapa ${_index + 1} de $_totalSteps'
-                : 'Etapa ${_index + 1} de $_totalSteps',
-            style: TextStyle(color: palette.dim, fontSize: 9),
           ),
         ],
       ),
@@ -743,7 +757,7 @@ _ProviderGuide _guideFor(ProviderId provider) => switch (provider) {
         'calcular as janelas de quota.',
     command: 'opencode',
     steps: [
-      'Rode `opencode` no terminal uma vez.',
+      'Rode opencode no terminal uma vez.',
       'Faça login no provedor quando o CLI pedir.',
       'A sessão fica em %LOCALAPPDATA%\\opencode\\opencode.db (Windows) '
           'ou ~/.local/share/opencode/opencode.db.',
@@ -767,8 +781,8 @@ _ProviderGuide _guideFor(ProviderId provider) => switch (provider) {
         'do Codex.',
     command: 'codex',
     steps: [
-      'Rode `codex` no terminal e faça login.',
-      'Se a sessão expirar, rode `codex login` de novo.',
+      'Rode codex no terminal e faça login.',
+      'Se a sessão expirar, rode codex login de novo.',
       'O QuotaDeck não renova o token sozinho.',
     ],
     hint: 'Sessão expirada volta a funcionar após o login.',
@@ -779,7 +793,7 @@ _ProviderGuide _guideFor(ProviderId provider) => switch (provider) {
         'de 5 horas e semanal.',
     command: 'claude',
     steps: [
-      'Rode `claude` no terminal e faça login.',
+      'Rode claude no terminal e faça login.',
       'Quando o token expirar, abra o Claude Code para renovar.',
       'Windows/Linux: ~/.claude/.credentials.json. macOS: Keychain.',
     ],
