@@ -36,7 +36,7 @@ class MockApi implements QuotaApi {
   late SnapshotEnvelope _envelope;
   int _refreshCount = 0;
 
-  static const _version = '0.2.0';
+  static const _version = '0.3.0';
   static const _dataDir = '~/Library/Application Support/QuotaDeck';
 
   @override

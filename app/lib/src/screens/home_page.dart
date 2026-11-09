@@ -1173,7 +1173,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final version = state.meta?.version ?? '0.2.0';
+    final version = state.meta?.version ?? '0.3.0';
     return Row(
       children: [
         const Spacer(),
