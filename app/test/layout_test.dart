@@ -163,7 +163,7 @@ void main() {
       compact: true,
       size: const Size(420, 900),
       onboarded: false,
-      installed: {ProviderId.opencode, ProviderId.codex},
+      installed: {ProviderId.opencode, ProviderId.claude},
     );
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
@@ -181,11 +181,11 @@ void main() {
       findsNothing,
     );
 
-    // opencode -> codex -> resumo
+    // opencode -> claude -> resumo
     await tester.tap(find.byKey(const Key('wizard-next')));
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: wizard, matching: find.text('Codex')),
+      find.descendant(of: wizard, matching: find.text('Claude')),
       findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('wizard-next')));

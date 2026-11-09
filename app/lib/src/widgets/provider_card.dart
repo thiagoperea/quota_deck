@@ -335,33 +335,29 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                spacing: 5,
+                runSpacing: 3,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      snapshot.provider.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.text,
-                        fontSize: compact ? 12 : 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  Text(
+                    snapshot.provider.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.text,
+                      fontSize: compact ? 12 : 12.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (plan != null && plan.trim().isNotEmpty) ...[
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        plan,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: palette.muted, fontSize: 10),
-                      ),
+                  if (plan != null && plan.trim().isNotEmpty)
+                    Text(
+                      plan,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.muted, fontSize: 10),
                     ),
-                  ],
-                  if (snapshot.surface != null) ...[
-                    const SizedBox(width: 5),
+                  if (snapshot.surface != null)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 5,
@@ -382,7 +378,6 @@ class _Header extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
                 ],
               ),
               if (email.isNotEmpty)
