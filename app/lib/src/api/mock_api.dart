@@ -241,7 +241,7 @@ class MockApi implements QuotaApi {
   }
 
   @override
-  void close() {}
+  Future<void> close() async {}
 
   SnapshotEnvelope _buildEnvelope(DateTime now) {
     if (empty) {

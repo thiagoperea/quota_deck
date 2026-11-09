@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 /// Instância única via socket loopback: a segunda execução pede foco e sai.
@@ -21,7 +22,7 @@ class SingleInstance {
       server.listen((client) async {
         try {
           final data = await client
-              .transform(const SystemEncoding().decoder)
+              .transform(utf8.decoder)
               .join()
               .timeout(const Duration(seconds: 2));
           if (data.contains('qdeck:show')) {
