@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:quota_deck_core/quota_deck_core.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../state/app_state.dart';
@@ -167,6 +168,7 @@ class _HomePageState extends State<HomePage> {
     ProviderSnapshot snapshot,
   ) async {
     final palette = QdPalette.of(context);
+    final state = context.read<AppState>();
     final provider = snapshot.provider;
     final command = switch (provider) {
       ProviderId.opencode => 'opencode',
@@ -177,67 +179,170 @@ class _HomePageState extends State<HomePage> {
     final desktopHistory =
         provider == ProviderId.claude &&
         snapshot.surface == ProviderSurface.desktop;
+    String? bundled;
+    if (provider == ProviderId.claude) {
+      try {
+        for (final file in AppPaths.bundledClaudeBinaries()) {
+          if (await file.exists()) {
+            bundled = file.path;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
 
+    var checking = false;
+    String? result;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Renovar ${provider.displayName}'),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                desktopHistory
-                    ? 'O Claude Desktop só expõe o histórico local (estimado). '
-                          'Para dados ao vivo com reset, faça login no Claude Code.'
-                    : 'O QuotaDeck não renova tokens automaticamente. '
-                          'Abra a ferramenta original para renovar o login.',
-              ),
-              const SizedBox(height: 12),
-              if (command != null) ...[
-                Text(
-                  'No terminal, execute:',
-                  style: TextStyle(color: palette.muted, fontSize: 11.5),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: palette.panel2,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: palette.border),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) {
+          return AlertDialog(
+            title: Text('Como renovar ${provider.displayName}'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    desktopHistory
+                        ? 'O Claude Desktop só expõe o histórico local (estimado). '
+                              'Para dados ao vivo com reset, faça login no Claude Code.'
+                        : 'O QuotaDeck não renova tokens automaticamente. '
+                              'Faça login na ferramenta original e verifique.',
                   ),
-                  child: SelectableText(
-                    command,
-                    style: TextStyle(
-                      color: palette.green,
-                      fontSize: 12,
-                      fontFamily: 'monospace',
+                  const SizedBox(height: 12),
+                  if (command != null) ...[
+                    Text(
+                      'No terminal, execute:',
+                      style: TextStyle(color: palette.muted, fontSize: 11.5),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Conclua o login na ferramenta e volte para atualizar.',
-                  style: TextStyle(color: palette.muted, fontSize: 11.5),
-                ),
-              ] else
-                Text(
-                  'Abra o aplicativo Antigravity, faça login e volte para atualizar.',
-                  style: TextStyle(color: palette.muted, fontSize: 11.5),
-                ),
+                    const SizedBox(height: 6),
+                    _CommandBox(command: command),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Conclua o login e use "Já renovei — verificar" aqui.',
+                      style: TextStyle(color: palette.muted, fontSize: 11.5),
+                    ),
+                  ] else
+                    Text(
+                      'Abra o Antigravity, faça login e mantenha o app aberto.',
+                      style: TextStyle(color: palette.muted, fontSize: 11.5),
+                    ),
+                  if (bundled != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'CLI embutida no Claude Desktop:',
+                      style: TextStyle(color: palette.muted, fontSize: 11.5),
+                    ),
+                    const SizedBox(height: 6),
+                    _CommandBox(command: bundled, small: true),
+                  ],
+                  if (result != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: palette.blue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            result!,
+                            style: TextStyle(
+                              color: palette.muted,
+                              fontSize: 11,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: checking
+                    ? null
+                    : () async {
+                        setLocal(() {
+                          checking = true;
+                          result = null;
+                        });
+                        await state.refresh(provider: provider);
+                        if (!dialogContext.mounted) return;
+                        final snap = state.envelope?.byProvider(provider);
+                        final authError = snap?.errors.any(
+                          (error) =>
+                              error.code == 'AUTH_MISSING' ||
+                              error.code == 'AUTH_EXPIRED' ||
+                              error.code == 'NOT_INSTALLED',
+                        );
+                        setLocal(() {
+                          checking = false;
+                          if (snap == null) {
+                            result = 'Sem resposta do provedor.';
+                          } else if (snap.windows.isNotEmpty &&
+                              authError != true) {
+                            result =
+                                'Conectado: ${snap.windows.length} janela(s) lida(s).';
+                          } else if (snap.errors.isNotEmpty) {
+                            result = snap.errors.first.message;
+                          } else {
+                            result = 'Ainda sem janelas de quota legíveis.';
+                          }
+                        });
+                      },
+                child: checking
+                    ? SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: palette.green,
+                        ),
+                      )
+                    : const Text('Já renovei — verificar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Fechar'),
+              ),
             ],
-          ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CommandBox extends StatelessWidget {
+  const _CommandBox({required this.command, this.small = false});
+
+  final String command;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: palette.panel2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: palette.border),
+      ),
+      child: SelectableText(
+        command,
+        maxLines: small ? 2 : 1,
+        style: TextStyle(
+          color: palette.green,
+          fontSize: small ? 10 : 12,
+          fontFamily: 'monospace',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Entendi'),
-          ),
-        ],
       ),
     );
   }
@@ -751,6 +856,7 @@ class _Content extends StatelessWidget {
           compact: compact,
           onRetry: () => unawaited(state.refresh(provider: snapshot.provider)),
           onAuthAction: () => onAuthAction(snapshot),
+          onOpenWizard: () => unawaited(showProviderWizard(context)),
         ),
     ];
 

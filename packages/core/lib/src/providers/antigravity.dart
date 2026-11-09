@@ -91,10 +91,26 @@ class AntigravityProvider implements ProviderAdapter {
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
     final hub = _findHub(ctx);
     if (hub == null) {
+      final installed =
+          await ctx.discovery.isRunning(const [
+            'antigravity',
+            'language_server',
+          ]) ||
+          Directory(
+            p.join(
+              ctx.env['LOCALAPPDATA'] ?? ctx.env['HOME'] ?? '',
+              'Programs',
+              'antigravity',
+            ),
+          ).existsSync();
       throw QdeckException(
-        code: QdeckErrorCode.providerNotRunning,
+        code: installed
+            ? QdeckErrorCode.providerNotRunning
+            : QdeckErrorCode.notInstalled,
         provider: id,
-        message: 'Daemon do Antigravity não encontrado. Abra o Antigravity.',
+        message: installed
+            ? 'Daemon do Antigravity não encontrado. Abra o Antigravity.'
+            : 'Antigravity não encontrado nesta máquina.',
       );
     }
     final meta = _readHub(hub);

@@ -107,13 +107,53 @@ void main() {
     await _pumpCard(tester, snapshot, onAuthAction: () => tapped = true);
 
     expect(find.text('Sessão expirada'), findsOneWidget);
-    expect(find.text('Abrir Claude Code'), findsOneWidget);
+    expect(find.text('Como renovar'), findsOneWidget);
     expect(find.byKey(const Key('auth-panel-claude')), findsOneWidget);
-    expect(find.text('cache'), findsOneWidget);
+    expect(find.text('desatualizado'), findsOneWidget);
 
-    await tester.tap(find.text('Abrir Claude Code'));
+    await tester.tap(find.text('Como renovar'));
     await tester.pump();
     expect(tapped, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ProviderCard mostra "não instalado" com CTA do assistente', (
+    tester,
+  ) async {
+    var wizard = false;
+    final snapshot = testSnapshot(
+      provider: ProviderId.codex,
+      windows: const [],
+      errors: const [
+        QdeckErrorInfo(
+          code: 'NOT_INSTALLED',
+          message: 'Codex não encontrado nesta máquina.',
+          retryable: false,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildDarkTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: 380,
+              child: ProviderCard(
+                snapshot: snapshot,
+                onOpenWizard: () => wizard = true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Não instalado'), findsOneWidget);
+    expect(find.text('Abrir assistente'), findsOneWidget);
+    await tester.tap(find.text('Abrir assistente'));
+    expect(wizard, isTrue);
     expect(tester.takeException(), isNull);
   });
 

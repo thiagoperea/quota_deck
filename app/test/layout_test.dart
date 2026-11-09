@@ -76,7 +76,7 @@ void main() {
     expect(find.byKey(const Key('provider-card-antigravity')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-codex')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('Abrir Claude Code'), findsOneWidget);
+    expect(find.text('Como renovar'), findsOneWidget);
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
     expect(find.text('PROVEDOR MAIS USADO'), findsOneWidget);
@@ -139,13 +139,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('primeira execução sem nada instalado cai no resumo', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      empty: true,
+      onboarded: false,
+      installed: const {},
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+    expect(find.text('Nenhuma ferramenta detectada'), findsOneWidget);
+    expect(find.byKey(const Key('wizard-redetect')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('assistente lista só provedores detectados', (tester) async {
     await _pumpApp(
       tester,
       compact: true,
       size: const Size(420, 900),
       onboarded: false,
-      installed: {ProviderId.opencode, ProviderId.codex},
+      installed: {ProviderId.opencode, ProviderId.claude},
     );
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
@@ -163,11 +181,11 @@ void main() {
       findsNothing,
     );
 
-    // opencode -> codex -> resumo
+    // opencode -> claude -> resumo
     await tester.tap(find.byKey(const Key('wizard-next')));
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: wizard, matching: find.text('Codex')),
+      find.descendant(of: wizard, matching: find.text('Claude')),
       findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('wizard-next')));

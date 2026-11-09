@@ -29,6 +29,7 @@ class HistoryStore {
 
   void _init() {
     db.execute('PRAGMA journal_mode = WAL;');
+    db.execute('PRAGMA busy_timeout = 4000;');
     db.execute('''
       CREATE TABLE IF NOT EXISTS snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,39 +56,48 @@ class HistoryStore {
     double minDelta = 1.0,
   }) {
     if (snapshot.stale) return;
-    for (final window in snapshot.windows) {
-      final last = db.select(
-        '''
-        SELECT used_percent, fetched_at FROM snapshots
-        WHERE provider = ? AND window_id = ?
-        ORDER BY fetched_at DESC LIMIT 1
-        ''',
-        [snapshot.provider.wireName, window.id],
-      );
-      if (last.isNotEmpty) {
-        final lastUsed = (last.first['used_percent'] as num).toDouble();
-        final lastAt = DateTime.tryParse(last.first['fetched_at'].toString());
-        if (lastAt != null) {
-          final age = snapshot.fetchedAt.difference(lastAt).abs();
-          if (age < minInterval &&
-              (window.usedPercent - lastUsed).abs() < minDelta) {
-            continue;
+    db.execute('BEGIN;');
+    try {
+      for (final window in snapshot.windows) {
+        final last = db.select(
+          '''
+          SELECT used_percent, fetched_at FROM snapshots
+          WHERE provider = ? AND window_id = ?
+          ORDER BY fetched_at DESC LIMIT 1
+          ''',
+          [snapshot.provider.wireName, window.id],
+        );
+        if (last.isNotEmpty) {
+          final lastUsed = (last.first['used_percent'] as num).toDouble();
+          final lastAt = DateTime.tryParse(last.first['fetched_at'].toString());
+          if (lastAt != null) {
+            final age = snapshot.fetchedAt.difference(lastAt).abs();
+            if (age < minInterval &&
+                (window.usedPercent - lastUsed).abs() < minDelta) {
+              continue;
+            }
           }
         }
+        db.execute(
+          '''
+          INSERT INTO snapshots(provider, window_id, used_percent, fetched_at, stale)
+          VALUES (?, ?, ?, ?, ?)
+          ''',
+          [
+            snapshot.provider.wireName,
+            window.id,
+            window.usedPercent,
+            formatDate(snapshot.fetchedAt),
+            snapshot.stale ? 1 : 0,
+          ],
+        );
       }
-      db.execute(
-        '''
-        INSERT INTO snapshots(provider, window_id, used_percent, fetched_at, stale)
-        VALUES (?, ?, ?, ?, ?)
-        ''',
-        [
-          snapshot.provider.wireName,
-          window.id,
-          window.usedPercent,
-          formatDate(snapshot.fetchedAt),
-          snapshot.stale ? 1 : 0,
-        ],
-      );
+      db.execute('COMMIT;');
+    } catch (_) {
+      try {
+        db.execute('ROLLBACK;');
+      } catch (_) {}
+      rethrow;
     }
   }
 

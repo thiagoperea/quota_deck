@@ -66,20 +66,27 @@ class ProviderCard extends StatelessWidget {
     this.compact = false,
     this.onRetry,
     this.onAuthAction,
+    this.onOpenWizard,
   });
 
   final ProviderSnapshot snapshot;
   final bool compact;
   final VoidCallback? onRetry;
   final VoidCallback? onAuthAction;
+  final VoidCallback? onOpenWizard;
 
   bool get _isAuthError => snapshot.errors.any(
-    (error) => error.code == 'AUTH_EXPIRED' || error.code == 'AUTH_MISSING',
+    (error) =>
+        error.code == 'AUTH_EXPIRED' ||
+        error.code == 'AUTH_MISSING' ||
+        error.code == 'PERMISSION_DENIED',
   );
 
   QdeckErrorInfo? get _authError {
     for (final error in snapshot.errors) {
-      if (error.code == 'AUTH_EXPIRED' || error.code == 'AUTH_MISSING') {
+      if (error.code == 'AUTH_EXPIRED' ||
+          error.code == 'AUTH_MISSING' ||
+          error.code == 'PERMISSION_DENIED') {
         return error;
       }
     }
@@ -88,12 +95,17 @@ class ProviderCard extends StatelessWidget {
 
   QdeckErrorInfo? get _otherError {
     for (final error in snapshot.errors) {
-      if (error.code != 'AUTH_EXPIRED' && error.code != 'AUTH_MISSING') {
+      if (error.code != 'AUTH_EXPIRED' &&
+          error.code != 'AUTH_MISSING' &&
+          error.code != 'PERMISSION_DENIED') {
         return error;
       }
     }
     return null;
   }
+
+  bool get _isNotInstalled =>
+      snapshot.errors.any((error) => error.code == 'NOT_INSTALLED');
 
   @override
   Widget build(BuildContext context) {
@@ -130,12 +142,19 @@ class ProviderCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Header(snapshot: snapshot, compact: compact),
-            if (_authError != null) ...[
+            if (_isNotInstalled) ...[
+              const SizedBox(height: 9),
+              _NotInstalledPanel(
+                snapshot: snapshot,
+                onOpenWizard: onOpenWizard,
+              ),
+            ] else if (_authError != null) ...[
               const SizedBox(height: 9),
               _AuthPanel(
                 snapshot: snapshot,
                 error: _authError!,
                 onAction: onAuthAction,
+                onRetry: onRetry,
               ),
             ] else if (_otherError != null) ...[
               const SizedBox(height: 9),
@@ -149,7 +168,9 @@ class ProviderCard extends StatelessWidget {
                     Icon(Icons.history, size: 12, color: palette.dim),
                     const SizedBox(width: 5),
                     Text(
-                      'Último snapshot em cache',
+                      snapshot.sourceId == 'claude-desktop-history'
+                          ? 'Histórico local do Desktop (estimado)'
+                          : 'Último snapshot em cache',
                       style: TextStyle(
                         color: palette.dim,
                         fontSize: 9,
@@ -162,6 +183,12 @@ class ProviderCard extends StatelessWidget {
               ] else
                 const SizedBox(height: 9),
               ..._buildGroups(context),
+            ] else if (_isNotInstalled) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Ative o assistente para instalar ou conectar este provedor.',
+                style: TextStyle(color: palette.muted, fontSize: 10.5),
+              ),
             ] else if (!snapshot.hasError) ...[
               const SizedBox(height: 8),
               Row(
@@ -216,14 +243,17 @@ class ProviderCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'fonte: ${snapshot.source}',
+                    'fonte: ${_friendlySource(snapshot)}',
                     style: TextStyle(color: palette.dim, fontSize: 9),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'atualizado ${relativeTime(snapshot.fetchedAt)}',
+                  _confidenceLabel(snapshot.confidence) == null
+                      ? 'atualizado ${relativeTime(snapshot.fetchedAt)}'
+                      : 'conf. ${_confidenceLabel(snapshot.confidence)} · '
+                            '${relativeTime(snapshot.fetchedAt)}',
                   style: TextStyle(color: palette.dim, fontSize: 9),
                 ),
               ],
@@ -305,33 +335,29 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                spacing: 5,
+                runSpacing: 3,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      snapshot.provider.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.text,
-                        fontSize: compact ? 12 : 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  Text(
+                    snapshot.provider.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.text,
+                      fontSize: compact ? 12 : 12.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (plan != null && plan.trim().isNotEmpty) ...[
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        plan,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: palette.muted, fontSize: 10),
-                      ),
+                  if (plan != null && plan.trim().isNotEmpty)
+                    Text(
+                      plan,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.muted, fontSize: 10),
                     ),
-                  ],
-                  if (snapshot.surface != null) ...[
-                    const SizedBox(width: 5),
+                  if (snapshot.surface != null)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 5,
@@ -352,7 +378,6 @@ class _Header extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
                 ],
               ),
               if (email.isNotEmpty)
@@ -456,34 +481,52 @@ class _WindowRow extends StatelessWidget {
     SourceKind.appServer => 'app-server',
     SourceKind.cli => 'CLI',
     SourceKind.headers => 'headers',
-    SourceKind.log => 'log',
+    SourceKind.log => 'histórico local',
     SourceKind.cache => 'cache',
   };
 }
+
+String _friendlySource(ProviderSnapshot snapshot) {
+  final id = snapshot.sourceId ?? snapshot.source;
+  return switch (id) {
+    'claude-desktop-history' => 'histórico local do Claude Desktop (estimado)',
+    'claude-oauth-usage' => 'API do Claude Code',
+    'opencode-usage-api' => 'API do OpenCode',
+    'codex-app-server' => 'app-server do Codex',
+    'codex-wham-usage' => 'API de uso do Codex',
+    'antigravity-language-server' => 'RPC local do Antigravity',
+    _ => snapshot.source,
+  };
+}
+
+String? _confidenceLabel(Confidence confidence) => switch (confidence) {
+  Confidence.high => 'alta',
+  Confidence.medium => 'média',
+  Confidence.low => 'baixa',
+  Confidence.none => null,
+};
 
 class _AuthPanel extends StatelessWidget {
   const _AuthPanel({
     required this.snapshot,
     required this.error,
     required this.onAction,
+    required this.onRetry,
   });
 
   final ProviderSnapshot snapshot;
   final QdeckErrorInfo error;
   final VoidCallback? onAction;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final missing = error.code == 'AUTH_MISSING';
-    final tool = snapshot.provider == ProviderId.claude
-        ? 'Claude Code'
-        : snapshot.provider.displayName;
     final title = missing ? 'Credencial ausente' : 'Sessão expirada';
     final message = error.message.trim().isEmpty
-        ? 'Abra $tool para renovar a sessão.'
+        ? 'Renove o login na ferramenta original.'
         : error.message;
-    final buttonLabel = 'Abrir $tool';
 
     return Container(
       key: Key('auth-panel-${snapshot.provider.name}'),
@@ -518,27 +561,104 @@ class _AuthPanel extends StatelessWidget {
             style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
           ),
           const SizedBox(height: 7),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onAction,
-              icon: const Icon(Icons.open_in_new, size: 13),
-              label: Text(buttonLabel),
-              style: TextButton.styleFrom(
-                foregroundColor: palette.yellow,
-                backgroundColor: palette.yellow.withValues(alpha: 0.1),
-                side: BorderSide(color: palette.yellow.withValues(alpha: 0.4)),
-                minimumSize: const Size(0, 32),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                textStyle: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (onRetry != null)
+                TextButton(
+                  onPressed: onRetry,
+                  style: TextButton.styleFrom(
+                    foregroundColor: palette.muted,
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: const TextStyle(fontSize: 10),
+                  ),
+                  child: const Text('Já renovei'),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.open_in_new, size: 13),
+                label: const Text('Como renovar'),
+                style: TextButton.styleFrom(
+                  foregroundColor: palette.yellow,
+                  backgroundColor: palette.yellow.withValues(alpha: 0.1),
+                  side: BorderSide(
+                    color: palette.yellow.withValues(alpha: 0.4),
+                  ),
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  textStyle: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-            ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotInstalledPanel extends StatelessWidget {
+  const _NotInstalledPanel({
+    required this.snapshot,
+    required this.onOpenWizard,
+  });
+
+  final ProviderSnapshot snapshot;
+  final VoidCallback? onOpenWizard;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    return Container(
+      key: Key('not-installed-panel-${snapshot.provider.name}'),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: palette.panel2,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.extension_off, size: 14, color: palette.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Não instalado',
+                  style: TextStyle(
+                    color: palette.text,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (onOpenWizard != null)
+                TextButton(
+                  onPressed: onOpenWizard,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: const TextStyle(fontSize: 10),
+                  ),
+                  child: const Text('Abrir assistente'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Esta ferramenta não foi encontrada nesta máquina. '
+            'O painel continua mostrando o card porque ela está habilitada.',
+            style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
           ),
         ],
       ),
@@ -572,7 +692,13 @@ class _ErrorPanel extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Falha ao consultar',
+                  switch (error.code) {
+                    'NO_SUBSCRIPTION' => 'Sem assinatura',
+                    'API_KEY_MODE' => 'Modo API key',
+                    'CREDENTIAL_UNREADABLE' => 'Credencial ilegível',
+                    'RATE_LIMITED' => 'Rate limit',
+                    _ => 'Falha ao consultar',
+                  },
                   style: TextStyle(
                     color: palette.red,
                     fontSize: 11,

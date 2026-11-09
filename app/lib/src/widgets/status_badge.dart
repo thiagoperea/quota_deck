@@ -22,13 +22,13 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final (label, color) = auth
-        ? ('auth', palette.yellow)
+        ? ('renovar login', palette.yellow)
         : switch (status) {
             QuotaStatus.ok => ('ok', palette.green),
             QuotaStatus.warning => ('atenção', palette.yellow),
             QuotaStatus.critical => ('crítico', palette.red),
             QuotaStatus.limited => ('limite', palette.red),
-            QuotaStatus.unknown => ('—', palette.dim),
+            QuotaStatus.unknown => ('sem dado', palette.dim),
           };
 
     final confidenceLabel = switch (confidence) {
@@ -37,9 +37,7 @@ class StatusBadge extends StatelessWidget {
       Confidence.low => 'baixa',
       Confidence.none => '',
     };
-    final text = !auth && confidenceLabel.isNotEmpty
-        ? '$label · $confidenceLabel'
-        : label;
+    final text = label;
 
     return Semantics(
       label: auth
@@ -91,7 +89,7 @@ class StatusBadge extends StatelessWidget {
                 border: Border.all(color: palette.border),
               ),
               child: Text(
-                'cache',
+                'desatualizado',
                 style: TextStyle(
                   color: palette.muted,
                   fontSize: 9,

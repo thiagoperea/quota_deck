@@ -236,6 +236,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Aplica o tema só em memória, para preview imediato no sheet.
+  void applyThemePreview(String theme) {
+    _config = _config.copyWith(theme: theme);
+    _safeNotify();
+  }
+
   Future<bool> saveSettings(AppConfig next) async {
     if (_saving) return false;
     _saving = true;
@@ -294,6 +300,19 @@ class AppState extends ChangeNotifier {
     _safeNotify();
     try {
       _detections = await _api.detect();
+      if (!_config.onboardingCompleted && _detections.isNotEmpty) {
+        // Primeira execução: o painel atrás do wizard só mostra o que existe.
+        final installed = {
+          for (final d in _detections)
+            if (d.detected) d.provider,
+        };
+        _config = _config.copyWith(
+          providers: {
+            for (final provider in ProviderId.values)
+              provider.wireName: installed.contains(provider),
+          },
+        );
+      }
     } catch (_) {
       // Detecção é complementar: mantém o que já havia.
     } finally {

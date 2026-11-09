@@ -101,12 +101,19 @@ class ClaudeProvider implements ProviderAdapter {
         rethrow;
       }
       final desktop = await _readDesktop(ctx);
-      if (desktop != null) return desktop;
+      if (desktop != null) {
+        return desktop.copyWith(errors: [error.toInfo()]);
+      }
+      if (error.code == QdeckErrorCode.authExpired) rethrow;
+      final installed =
+          await _findCliBinary(ctx) != null ||
+          AppPaths.claudeDesktopDirs(env: ctx.env).any((d) => d.existsSync());
       throw QdeckException(
-        code: error.code,
+        code: installed ? error.code : QdeckErrorCode.notInstalled,
         provider: id,
-        message:
-            '${error.message} Nenhum histórico local do Claude Desktop foi encontrado.',
+        message: installed
+            ? '${error.message} Nenhum histórico local do Claude Desktop foi encontrado.'
+            : 'Claude não encontrado (nem Claude Code nem Claude Desktop).',
         details: {
           ...?error.details,
           'surfaces': ['cli', 'desktop'],
@@ -188,7 +195,9 @@ class ClaudeProvider implements ProviderAdapter {
     ]) {
       final item = decoded[key];
       if (item is! Map) continue;
-      final used = clampPercent(asDouble(item['utilization']));
+      final usedRaw = asDoubleOrNull(item['utilization']);
+      if (usedRaw == null) continue;
+      final used = clampPercent(usedRaw);
       final kind = switch (key) {
         'five_hour' => WindowKind.session,
         'seven_day' => WindowKind.weekly,
@@ -287,7 +296,7 @@ class ClaudeProvider implements ProviderAdapter {
       sourceId: _srcDesktop,
       surface: ProviderSurface.desktop,
       fetchedAt: usage.seenAt,
-      stale: age > const Duration(hours: 6),
+      stale: age > const Duration(minutes: 45),
       confidence: Confidence.low,
     );
   }

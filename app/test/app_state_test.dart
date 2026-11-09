@@ -34,6 +34,27 @@ void main() {
     expect(claude!.installedSurfaces, isNotEmpty);
   });
 
+  test('primeira execução habilita só provedores detectados', () async {
+    final state = AppState(
+      MockApi(
+        installedProviders: {ProviderId.opencode, ProviderId.codex},
+        config: AppConfig.defaults().copyWith(
+          onboardingCompleted: false,
+          refreshSeconds: 0,
+        ),
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await state.initialize();
+    await state.detectProviders();
+
+    expect(state.config.isEnabled(ProviderId.opencode), isTrue);
+    expect(state.config.isEnabled(ProviderId.codex), isTrue);
+    expect(state.config.isEnabled(ProviderId.antigravity), isFalse);
+    expect(state.config.isEnabled(ProviderId.claude), isFalse);
+  });
+
   test('refresh atualiza o envelope sem perder os cards', () async {
     final api = MockApi();
     final state = AppState(api);

@@ -19,13 +19,30 @@ final List<(RegExp, String)> _patterns = [
     ),
     r'$1<redacted>',
   ),
+  // JSON com chave citada: {"access_token":"..."} / {"refreshToken":"..."}
+  (
+    RegExp(
+      r'("(?:access|refresh|id|session|api)[_-]?token"\s*:\s*")[^"]+(")',
+      caseSensitive: false,
+    ),
+    r'$1<redacted>$2',
+  ),
+  (
+    RegExp(
+      r'("(?:api[_-]?key|authorization|password|secret|cookie|credential)"\s*:\s*")[^"]+(")',
+      caseSensitive: false,
+    ),
+    r'$1<redacted>$2',
+  ),
 ];
 
 String _apply(RegExp pattern, String replacement, String input) {
   return input.replaceAllMapped(pattern, (match) {
-    if (!replacement.contains(r'$1')) return replacement;
-    final group = match.groupCount >= 1 ? (match.group(1) ?? '') : '';
-    return replacement.replaceAll(r'$1', group);
+    var out = replacement;
+    for (var i = match.groupCount; i >= 1; i--) {
+      out = out.replaceAll('\$$i', match.group(i) ?? '');
+    }
+    return out;
   });
 }
 

@@ -28,9 +28,9 @@ void main() {
       'LOCALAPPDATA': r'C:\Users\me\AppData\Local',
       'APPDATA': r'C:\Users\me\AppData\Roaming',
     };
-    final files = AppPaths.openCodeDbs(
-      env: env,
-    ).map((f) => f.path.replaceAll('\\', '/')).toList();
+    final files = AppPaths.openCodeDbs(env: env)
+        .map((f) => f.path.replaceAll('\\', '/'))
+        .toList();
     final xdgIndex = files.indexWhere(
       (path) => path.endsWith('.local/share/opencode/opencode.db'),
     );
@@ -148,6 +148,56 @@ void main() {
     expect(snapshot.windows[0].usedPercent, 42);
     expect(snapshot.windows[1].usedPercent, 17);
     expect(snapshot.windows[0].resetsAt, isNull);
+    expect(
+      snapshot.errors.map((e) => e.code),
+      contains('AUTH_MISSING'),
+      reason: 'o fallback precisa carregar o erro original do CLI',
+    );
+    expect(snapshot.stale, isFalse);
+  });
+
+  test('percentual ausente não vira 0%', () async {
+    final home = Directory('${temp.path}/home2');
+    final dataDir = Directory('${home.path}/.local/share/opencode');
+    await dataDir.create(recursive: true);
+    final db = File('${dataDir.path}/opencode.db');
+    final database = sqlite3.open(db.path);
+    database.execute(
+      'CREATE TABLE credential (id TEXT, integration_id TEXT, label TEXT, '
+      'value TEXT, active INTEGER)',
+    );
+    database.execute('INSERT INTO credential VALUES (?, ?, ?, ?, ?)', [
+      'cred_2',
+      'opencode',
+      'Default',
+      jsonEncode({'type': 'key', 'key': 'k'}),
+      1,
+    ]);
+    database.close();
+
+    final ctx = ProviderContext(
+      paths: AppPaths(temp),
+      http: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'usage': {
+              'rolling': {'resetsAt': '2026-11-09T15:00:00Z'},
+              'weekly': {'percent': 20},
+            },
+          }),
+          200,
+        ),
+      ),
+      process: FakeProcessRunner(),
+      env: {'HOME': home.path, 'USERPROFILE': home.path},
+      now: () => DateTime.utc(2026, 11, 9, 12),
+      log: (_) {},
+    );
+
+    final snapshot = await const OpenCodeProvider().read(ctx);
+    expect(snapshot.windows, hasLength(1));
+    expect(snapshot.windows.single.id, 'weekly');
+    expect(snapshot.windows.single.usedPercent, 20);
   });
 
   test('detection: serialize surfaces', () {
