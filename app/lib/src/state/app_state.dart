@@ -37,6 +37,7 @@ class AppState extends ChangeNotifier {
   Timer? _timer;
   final Map<String, HistorySummary> _history = {};
   bool _loadingHistory = false;
+  bool _wizardVisible = false;
   List<DoctorCheck> _doctorChecks = const [];
 
   SnapshotEnvelope? get envelope => _envelope;
@@ -56,6 +57,17 @@ class AppState extends ChangeNotifier {
       ProviderId.values.where(_config.isEnabled).length;
 
   bool get needsOnboarding => !_config.onboardingCompleted;
+
+  /// Evita dois assistentes abertos quando há mais de uma rota montada.
+  bool tryClaimWizard() {
+    if (_wizardVisible) return false;
+    _wizardVisible = true;
+    return true;
+  }
+
+  void releaseWizard() {
+    _wizardVisible = false;
+  }
 
   /// Estimativa conservadora: 100% menos a janela mais consumida.
   double? get estimatedAvailablePercent {
