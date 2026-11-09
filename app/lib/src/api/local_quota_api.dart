@@ -39,7 +39,7 @@ class LocalQuotaApi implements QuotaApi {
       envelope: envelope,
       config: config,
       meta: ApiMeta(
-        version: '0.1.2',
+        version: '0.2.0',
         dataDir: paths.maskedDataDir,
         providers: [
           for (final provider in ProviderId.values)
@@ -53,6 +53,12 @@ class LocalQuotaApi implements QuotaApi {
   Future<SnapshotEnvelope> refresh({ProviderId? provider}) async {
     final service = await _service();
     return service.refresh(provider: provider);
+  }
+
+  @override
+  Future<List<DetectionResult>> detect() async {
+    final service = await _service();
+    return service.detect();
   }
 
   @override

@@ -330,6 +330,29 @@ class _Header extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (snapshot.surface != null) ...[
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: palette.panel2,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: palette.border),
+                      ),
+                      child: Text(
+                        snapshot.surface!.label,
+                        style: TextStyle(
+                          color: palette.dim,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               if (email.isNotEmpty)
@@ -453,11 +476,14 @@ class _AuthPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final missing = error.code == 'AUTH_MISSING';
+    final tool = snapshot.provider == ProviderId.claude
+        ? 'Claude Code'
+        : snapshot.provider.displayName;
     final title = missing ? 'Credencial ausente' : 'Sessão expirada';
     final message = error.message.trim().isEmpty
-        ? 'Abra ${snapshot.provider.displayName} para renovar a sessão.'
+        ? 'Abra $tool para renovar a sessão.'
         : error.message;
-    final buttonLabel = 'Abrir ${snapshot.provider.displayName}';
+    final buttonLabel = 'Abrir $tool';
 
     return Container(
       key: Key('auth-panel-${snapshot.provider.name}'),

@@ -50,6 +50,9 @@ abstract class QuotaApi {
 
   Future<SnapshotEnvelope> refresh({ProviderId? provider});
 
+  /// Descobre apps/binários instalados e credenciais legíveis, sem rede.
+  Future<List<DetectionResult>> detect();
+
   Future<List<DoctorCheck>> fetchDoctor();
 
   Future<HistorySummary> fetchHistory({

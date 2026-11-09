@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../errors.dart';
@@ -13,48 +14,116 @@ class ClaudeProvider implements ProviderAdapter {
   @override
   ProviderId get id => ProviderId.claude;
 
+  static const _srcCli = 'claude-oauth-usage';
+  static const _srcDesktop = 'claude-desktop-history';
+
   @override
   Future<DetectionResult> detect(ProviderContext ctx) async {
-    if (Platform.isMacOS) {
-      try {
-        final result = await ctx.process.run('security', [
-          'find-generic-password',
-          '-s',
-          'Claude Code-credentials',
-        ], timeout: const Duration(seconds: 5));
-        if (result.ok) {
-          return const DetectionResult(
-            provider: ProviderId.claude,
-            detected: true,
-            reason: 'Item do Keychain encontrado.',
-          );
-        }
-      } catch (_) {}
+    final cli = await _probeCli(ctx);
+    final desktop = await _probeDesktop(ctx);
+    return DetectionResult.fromSurfaces(provider: id, surfaces: [cli, desktop]);
+  }
+
+  Future<SurfaceState> _probeCli(ProviderContext ctx) async {
+    _ClaudeCredentials? creds;
+    try {
+      creds = await _readCredentials(ctx);
+    } on QdeckException {
+      creds = null;
     }
     final file = AppPaths.claudeCredentials(env: ctx.env);
-    if (await file.exists()) {
-      return DetectionResult(
-        provider: ProviderId.claude,
-        detected: true,
-        reason: 'Credenciais em ${AppPaths.maskPath(file.path, env: ctx.env)}.',
-      );
+    final fileExists = await file.exists();
+    final binary = await _findCliBinary(ctx);
+    final expired =
+        creds?.expiresAt != null && creds!.expiresAt!.isBefore(ctx.now());
+    final authenticated =
+        creds != null && creds.accessToken.isNotEmpty && !expired;
+    final installed = fileExists || binary != null || creds != null;
+    return SurfaceState(
+      surface: ProviderSurface.cli,
+      installed: installed,
+      authenticated: authenticated,
+      live: true,
+      location:
+          binary ??
+          (fileExists ? AppPaths.maskPath(file.path, env: ctx.env) : null),
+      account: null,
+      reason: authenticated
+          ? 'Token OAuth do Claude Code presente.'
+          : expired
+          ? 'Token do Claude Code expirado.'
+          : installed
+          ? 'Claude Code instalado, sem login ativo.'
+          : 'Claude Code não encontrado.',
+      action: authenticated ? null : 'Rode claude no terminal (ou o claude.exe embutido no Claude Desktop) e faça login.',
+    );
+  }
+
+  Future<SurfaceState> _probeDesktop(ProviderContext ctx) async {
+    final dirs = AppPaths.claudeDesktopDirs(env: ctx.env);
+    final historyFile = await _newestUsageFile(ctx);
+    String? installedDir;
+    for (final dir in dirs) {
+      if (dir.existsSync()) {
+        installedDir = dir.path;
+        break;
+      }
     }
-    return const DetectionResult(
-      provider: ProviderId.claude,
-      detected: false,
-      reason: 'Credenciais do Claude Code não encontradas.',
+    final running = await ctx.discovery.isRunning(const ['claude']);
+    final usage = historyFile == null
+        ? null
+        : await _readDesktopUsage(historyFile);
+    return SurfaceState(
+      surface: ProviderSurface.desktop,
+      installed: installedDir != null || running || usage != null,
+      authenticated: usage != null,
+      live: false,
+      location: historyFile == null
+          ? installedDir
+          : AppPaths.maskPath(historyFile.path, env: ctx.env),
+      account: null,
+      reason: usage == null
+          ? 'Claude Desktop detectado, sem histórico de uso legível.'
+          : 'Histórico local do Claude Desktop (estimado, atualiza com o app aberto).',
+      action: usage == null
+          ? null
+          : 'Para dados ao vivo com reset, faça login no Claude Code.',
     );
   }
 
   @override
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
+    try {
+      return await _readCli(ctx);
+    } on QdeckException catch (error) {
+      if (error.code != QdeckErrorCode.authMissing &&
+          error.code != QdeckErrorCode.authExpired) {
+        rethrow;
+      }
+      final desktop = await _readDesktop(ctx);
+      if (desktop != null) return desktop;
+      throw QdeckException(
+        code: error.code,
+        provider: id,
+        message:
+            '${error.message} Nenhum histórico local do Claude Desktop foi encontrado.',
+        details: {
+          ...?error.details,
+          'surfaces': ['cli', 'desktop'],
+        },
+      );
+    }
+  }
+
+  Future<ProviderSnapshot> _readCli(ProviderContext ctx) async {
     final creds = await _readCredentials(ctx);
     if (creds == null || creds.accessToken.isEmpty) {
       throw QdeckException(
         code: QdeckErrorCode.authMissing,
         provider: id,
         message:
-            'Claude Code não autenticado. Abra o Claude Code para fazer login.',
+            'Claude sem credencial utilizável. Faça login no Claude Code '
+            '(CLI) para leitura ao vivo.',
       );
     }
     final expiresAt = creds.expiresAt;
@@ -166,21 +235,72 @@ class ClaudeProvider implements ProviderAdapter {
       account: AccountInfo(label: 'Claude Code', plan: creds.subscriptionType),
       windows: windows,
       credits: credits,
-      source: 'claude-oauth-usage',
+      source: _srcCli,
+      sourceId: _srcCli,
+      surface: ProviderSurface.cli,
       fetchedAt: ctx.now(),
       confidence: Confidence.high,
+    );
+  }
+
+  Future<ProviderSnapshot?> _readDesktop(ProviderContext ctx) async {
+    final file = await _newestUsageFile(ctx);
+    if (file == null) return null;
+    final usage = await _readDesktopUsage(file);
+    if (usage == null) return null;
+    final age = ctx.now().difference(usage.seenAt);
+    final windows = <QuotaWindow>[];
+    if (usage.fiveHour != null) {
+      final used = clampPercent(usage.fiveHour!);
+      windows.add(
+        QuotaWindow(
+          id: 'desktop_five_hour',
+          label: '5 horas',
+          kind: WindowKind.session,
+          usedPercent: used,
+          remainingPercent: clampPercent(100 - used),
+          status: statusForUsed(used),
+          source: SourceKind.log,
+        ),
+      );
+    }
+    if (usage.sevenDay != null) {
+      final used = clampPercent(usage.sevenDay!);
+      windows.add(
+        QuotaWindow(
+          id: 'desktop_seven_day',
+          label: 'Semanal (7d)',
+          kind: WindowKind.weekly,
+          usedPercent: used,
+          remainingPercent: clampPercent(100 - used),
+          status: statusForUsed(used),
+          source: SourceKind.log,
+        ),
+      );
+    }
+    if (windows.isEmpty) return null;
+    return ProviderSnapshot(
+      provider: id,
+      account: const AccountInfo(label: 'Claude Desktop'),
+      windows: windows,
+      source: _srcDesktop,
+      sourceId: _srcDesktop,
+      surface: ProviderSurface.desktop,
+      fetchedAt: usage.seenAt,
+      stale: age > const Duration(hours: 6),
+      confidence: Confidence.low,
     );
   }
 
   @override
   Future<List<DoctorCheck>> doctor(ProviderContext ctx) async {
     final checks = <DoctorCheck>[];
-    final creds = await _readCredentials(ctx);
+    final creds = await _safeCreds(ctx);
     checks.add(
       DoctorCheck(
         provider: id,
-        id: 'credentials',
-        label: 'Credenciais',
+        id: 'cli-credentials',
+        label: 'Claude Code (CLI)',
         status: creds == null ? DoctorStatus.fail : DoctorStatus.ok,
         message: creds == null
             ? 'Keychain/arquivo não encontrado.'
@@ -205,7 +325,101 @@ class ClaudeProvider implements ProviderAdapter {
         ),
       );
     }
+
+    final history = await _newestUsageFile(ctx);
+    final usage = history == null ? null : await _readDesktopUsage(history);
+    checks.add(
+      DoctorCheck(
+        provider: id,
+        id: 'desktop-history',
+        label: 'Claude Desktop (histórico)',
+        status: usage == null ? DoctorStatus.warn : DoctorStatus.ok,
+        message: usage == null
+            ? 'Sem plan-usage-history.json legível.'
+            : 'Amostra de ${formatDate(usage.seenAt)}; '
+                  'fh=${usage.fiveHour} sd=${usage.sevenDay}.',
+      ),
+    );
+
+    final binary = await _findCliBinary(ctx);
+    checks.add(
+      DoctorCheck(
+        provider: id,
+        id: 'cli-binary',
+        label: 'Binário do Claude Code',
+        status: binary == null ? DoctorStatus.warn : DoctorStatus.ok,
+        message: binary == null
+            ? 'Não encontrado no PATH nem no Claude Desktop.'
+            : AppPaths.maskPath(binary, env: ctx.env),
+      ),
+    );
     return checks;
+  }
+
+  Future<_ClaudeCredentials?> _safeCreds(ProviderContext ctx) async {
+    try {
+      return await _readCredentials(ctx);
+    } on QdeckException {
+      return null;
+    }
+  }
+
+  Future<String?> _findCliBinary(ProviderContext ctx) async {
+    final onPath = await ctx.discovery.firstBinary(const ['claude']);
+    if (onPath != null) return onPath;
+    for (final file in AppPaths.bundledClaudeBinaries(env: ctx.env)) {
+      if (await file.exists()) return file.path;
+    }
+    return null;
+  }
+
+  Future<File?> _newestUsageFile(ProviderContext ctx) async {
+    File? newest;
+    DateTime? newestAt;
+    for (final file in AppPaths.claudeDesktopUsageFiles(env: ctx.env)) {
+      if (!p.basename(file.path).startsWith('plan-usage')) continue;
+      if (!await file.exists()) continue;
+      final stat = await file.stat();
+      if (newestAt == null || stat.modified.isAfter(newestAt)) {
+        newest = file;
+        newestAt = stat.modified;
+      }
+    }
+    return newest;
+  }
+
+  Future<_ClaudeDesktopUsage?> _readDesktopUsage(File file) async {
+    if (!p.basename(file.path).startsWith('plan-usage')) return null;
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return null;
+      final samples = decoded['samples'];
+      if (samples is! List || samples.isEmpty) return null;
+      Map? best;
+      num? bestT;
+      for (final raw in samples) {
+        if (raw is! Map) continue;
+        final t = raw['t'];
+        if (t is! num) continue;
+        if (bestT == null || t > bestT) {
+          best = raw;
+          bestT = t;
+        }
+      }
+      if (best == null || bestT == null) return null;
+      final u = best['u'];
+      if (u is! Map) return null;
+      final fh = asDoubleOrNull(u['fh']);
+      final sd = asDoubleOrNull(u['sd']);
+      if (fh == null && sd == null) return null;
+      return _ClaudeDesktopUsage(
+        seenAt: DateTime.fromMillisecondsSinceEpoch(bestT.round(), isUtc: true),
+        fiveHour: fh,
+        sevenDay: sd,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<_ClaudeCredentials?> _readCredentials(ProviderContext ctx) async {
@@ -290,5 +504,17 @@ class _ClaudeCredentials {
     required this.accessToken,
     required this.expiresAt,
     required this.subscriptionType,
+  });
+}
+
+class _ClaudeDesktopUsage {
+  final DateTime seenAt;
+  final double? fiveHour;
+  final double? sevenDay;
+
+  const _ClaudeDesktopUsage({
+    required this.seenAt,
+    this.fiveHour,
+    this.sevenDay,
   });
 }

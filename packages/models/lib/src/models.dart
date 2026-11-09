@@ -9,11 +9,14 @@ enum ProviderId {
 
   String get wireName => name;
 
-  String get displayName => switch (this) {
-    ProviderId.opencode => 'OpenCode Go',
+  String get displayName => vendorName;
+
+  /// Nome do fornecedor, sem produto/superfície (ex.: "Claude", não "Claude Code").
+  String get vendorName => switch (this) {
+    ProviderId.opencode => 'OpenCode',
     ProviderId.antigravity => 'Antigravity',
     ProviderId.codex => 'Codex',
-    ProviderId.claude => 'Claude Code',
+    ProviderId.claude => 'Claude',
   };
 
   static ProviderId? tryParse(String? value) {
@@ -106,6 +109,28 @@ enum SourceKind {
       if (s.wireName == v) return s;
     }
     return SourceKind.api;
+  }
+}
+
+enum ProviderSurface {
+  cli,
+  desktop,
+  ide;
+
+  String get wireName => name;
+
+  String get label => switch (this) {
+    ProviderSurface.cli => 'CLI',
+    ProviderSurface.desktop => 'Desktop',
+    ProviderSurface.ide => 'IDE',
+  };
+
+  static ProviderSurface? tryParse(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    for (final s in ProviderSurface.values) {
+      if (s.name == v) return s;
+    }
+    return null;
   }
 }
 
@@ -286,6 +311,8 @@ class ProviderSnapshot {
   final List<QuotaWindow> windows;
   final CreditsInfo? credits;
   final String source;
+  final String? sourceId;
+  final ProviderSurface? surface;
   final DateTime fetchedAt;
   final bool stale;
   final Confidence confidence;
@@ -298,6 +325,8 @@ class ProviderSnapshot {
     required this.windows,
     this.credits,
     required this.source,
+    this.sourceId,
+    this.surface,
     required this.fetchedAt,
     this.stale = false,
     this.confidence = Confidence.none,
@@ -327,6 +356,8 @@ class ProviderSnapshot {
           ? CreditsInfo.fromJson(json['credits'] as Map<String, dynamic>)
           : null,
       source: (json['source'] ?? 'unknown').toString(),
+      sourceId: json['sourceId']?.toString(),
+      surface: ProviderSurface.tryParse(json['surface']?.toString()),
       fetchedAt: parseDate(json['fetchedAt']) ?? DateTime.now().toUtc(),
       stale: _asBool(json['stale']),
       confidence: Confidence.fromWire(json['confidence']?.toString()),
@@ -341,6 +372,8 @@ class ProviderSnapshot {
     'windows': windows.map((w) => w.toJson()).toList(growable: false),
     'credits': credits?.toJson(),
     'source': source,
+    'sourceId': sourceId,
+    'surface': surface?.wireName,
     'fetchedAt': formatDate(fetchedAt),
     'stale': stale,
     'confidence': confidence.wireName,
@@ -351,6 +384,8 @@ class ProviderSnapshot {
     List<QuotaWindow>? windows,
     CreditsInfo? credits,
     String? source,
+    String? sourceId,
+    ProviderSurface? surface,
     DateTime? fetchedAt,
     bool? stale,
     Confidence? confidence,
@@ -362,6 +397,8 @@ class ProviderSnapshot {
     windows: windows ?? this.windows,
     credits: credits ?? this.credits,
     source: source ?? this.source,
+    sourceId: sourceId ?? this.sourceId,
+    surface: surface ?? this.surface,
     fetchedAt: fetchedAt ?? this.fetchedAt,
     stale: stale ?? this.stale,
     confidence: confidence ?? this.confidence,
@@ -430,19 +467,117 @@ class DetectionResult {
   final bool detected;
   final String? reason;
   final Map<String, dynamic>? details;
+  final List<SurfaceState> surfaces;
 
   const DetectionResult({
     required this.provider,
     required this.detected,
     this.reason,
     this.details,
+    this.surfaces = const [],
   });
+
+  factory DetectionResult.fromSurfaces({
+    required ProviderId provider,
+    required List<SurfaceState> surfaces,
+    String? reason,
+  }) {
+    final installed = surfaces
+        .where((s) => s.installed)
+        .toList(growable: false);
+    return DetectionResult(
+      provider: provider,
+      detected: installed.isNotEmpty,
+      reason: reason ?? (installed.isEmpty ? _summary(surfaces) : null),
+      surfaces: surfaces,
+    );
+  }
+
+  List<SurfaceState> get installedSurfaces =>
+      surfaces.where((s) => s.installed).toList(growable: false);
+
+  List<SurfaceState> get authenticatedSurfaces => surfaces
+      .where((s) => s.installed && s.authenticated)
+      .toList(growable: false);
+
+  bool get authenticated => authenticatedSurfaces.isNotEmpty;
+
+  SurfaceState? get preferredSurface {
+    for (final surface in authenticatedSurfaces) {
+      if (surface.live) return surface;
+    }
+    final authenticatedAll = authenticatedSurfaces;
+    if (authenticatedAll.isNotEmpty) return authenticatedAll.first;
+    final installed = installedSurfaces;
+    return installed.isEmpty ? null : installed.first;
+  }
 
   Map<String, dynamic> toJson() => {
     'provider': provider.wireName,
     'detected': detected,
     'reason': reason,
     if (details != null) 'details': details,
+    if (surfaces.isNotEmpty)
+      'surfaces': surfaces.map((s) => s.toJson()).toList(growable: false),
+  };
+
+  static String _summary(List<SurfaceState> surfaces) {
+    if (surfaces.isEmpty) return 'Nenhuma superfície conhecida.';
+    return surfaces
+        .map(
+          (s) => '${s.surface.label}: ${s.installed ? 'instalado' : 'ausente'}',
+        )
+        .join('; ');
+  }
+}
+
+class SurfaceState {
+  final ProviderSurface surface;
+  final bool installed;
+  final bool authenticated;
+  final bool live;
+  final String? version;
+  final String? location;
+  final String? account;
+  final String? reason;
+  final String? action;
+
+  const SurfaceState({
+    required this.surface,
+    required this.installed,
+    this.authenticated = false,
+    this.live = true,
+    this.version,
+    this.location,
+    this.account,
+    this.reason,
+    this.action,
+  });
+
+  factory SurfaceState.fromJson(Map<String, dynamic> json) => SurfaceState(
+    surface:
+        ProviderSurface.tryParse(json['surface']?.toString()) ??
+        ProviderSurface.cli,
+    installed: _asBool(json['installed']),
+    authenticated: _asBool(json['authenticated']),
+    live: json['live'] == null ? true : _asBool(json['live']),
+    version: json['version']?.toString(),
+    location: json['location']?.toString(),
+    account: json['account']?.toString(),
+    reason: json['reason']?.toString(),
+    action: json['action']?.toString(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'surface': surface.wireName,
+    'installed': installed,
+    'authenticated': authenticated,
+    'live': live,
+    'version': version,
+    'location': location,
+    'account': account,
+    'reason': reason,
+    'action': action,
   };
 }
 
@@ -534,6 +669,7 @@ class HistorySummary {
 class AppConfig {
   final int schemaVersion;
   final Map<String, bool> providers;
+  final Map<String, bool> surfaces;
   final int refreshSeconds;
   final int cacheTtlSeconds;
   final bool historyEnabled;
@@ -551,6 +687,7 @@ class AppConfig {
   const AppConfig({
     this.schemaVersion = 1,
     required this.providers,
+    this.surfaces = const {},
     this.refreshSeconds = 60,
     this.cacheTtlSeconds = 60,
     this.historyEnabled = true,
@@ -584,9 +721,17 @@ class AppConfig {
         providers[entry.key.toString()] = _asBool(entry.value);
       }
     }
+    final rawSurfaces = json['surfaces'];
+    final surfaces = <String, bool>{...defaults.surfaces};
+    if (rawSurfaces is Map) {
+      for (final entry in rawSurfaces.entries) {
+        surfaces[entry.key.toString()] = _asBool(entry.value);
+      }
+    }
     return AppConfig(
       schemaVersion: _asInt(json['schemaVersion'], 1),
       providers: providers,
+      surfaces: surfaces,
       refreshSeconds: _asInt(json['refreshSeconds'], defaults.refreshSeconds),
       cacheTtlSeconds: _asInt(
         json['cacheTtlSeconds'],
@@ -630,6 +775,7 @@ class AppConfig {
   Map<String, dynamic> toJson() => {
     'schemaVersion': schemaVersion,
     'providers': providers,
+    'surfaces': surfaces,
     'refreshSeconds': refreshSeconds,
     'cacheTtlSeconds': cacheTtlSeconds,
     'historyEnabled': historyEnabled,
@@ -647,8 +793,12 @@ class AppConfig {
 
   bool isEnabled(ProviderId id) => providers[id.wireName] ?? true;
 
+  bool isSurfaceEnabled(ProviderId id, ProviderSurface surface) =>
+      surfaces['${id.wireName}.${surface.wireName}'] ?? true;
+
   AppConfig copyWith({
     Map<String, bool>? providers,
+    Map<String, bool>? surfaces,
     int? refreshSeconds,
     int? cacheTtlSeconds,
     bool? historyEnabled,
@@ -665,6 +815,7 @@ class AppConfig {
   }) => AppConfig(
     schemaVersion: schemaVersion,
     providers: providers ?? this.providers,
+    surfaces: surfaces ?? this.surfaces,
     refreshSeconds: refreshSeconds ?? this.refreshSeconds,
     cacheTtlSeconds: cacheTtlSeconds ?? this.cacheTtlSeconds,
     historyEnabled: historyEnabled ?? this.historyEnabled,

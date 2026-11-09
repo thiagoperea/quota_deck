@@ -1,6 +1,8 @@
 import 'package:http/http.dart' as http_lib;
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import 'discovery.dart';
+import 'errors.dart';
 import 'paths.dart';
 import 'process_runner.dart';
 
@@ -11,15 +13,17 @@ class ProviderContext {
   final Map<String, String> env;
   final DateTime Function() now;
   final void Function(String message) log;
+  final SystemDiscovery discovery;
 
-  const ProviderContext({
+  ProviderContext({
     required this.paths,
     required this.http,
     required this.process,
     required this.env,
     required this.now,
     required this.log,
-  });
+    SystemDiscovery? discovery,
+  }) : discovery = discovery ?? SystemDiscovery(process, env: env);
 }
 
 abstract class ProviderAdapter {
