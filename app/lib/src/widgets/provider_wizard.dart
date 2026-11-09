@@ -8,6 +8,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'provider_card.dart';
+import 'surface_chip.dart';
 
 /// Assistente dirigido por detecção: mostra só o que está instalado,
 /// com uma linha por superfície (desktop/CLI) e instruções específicas.
@@ -240,7 +241,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                           _error!,
                           style: TextStyle(
                             color: palette.red,
-                            fontSize: 10.5,
+                            fontSize: QdType.small,
                             height: 1.35,
                           ),
                         ),
@@ -291,7 +292,10 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                   widget.firstRun
                       ? 'Detectamos o que está instalado. Um provedor por vez.'
                       : 'Revise o que aparece no painel e como renovar o login.',
-                  style: TextStyle(color: palette.muted, fontSize: 10.5),
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: QdType.small,
+                  ),
                 ),
               ],
             ),
@@ -323,7 +327,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                   stepLabel,
                   style: TextStyle(
                     color: palette.muted,
-                    fontSize: 9.5,
+                    fontSize: QdType.meta,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -383,10 +387,14 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                 ],
               ),
             ),
-            Switch(
-              key: Key('wizard-toggle-${provider.name}'),
-              value: enabled,
-              onChanged: (value) => _setEnabled(provider, value),
+            Semantics(
+              label: 'Mostrar ${provider.displayName} no painel',
+              toggled: enabled,
+              child: Switch(
+                key: Key('wizard-toggle-${provider.name}'),
+                value: enabled,
+                onChanged: (value) => _setEnabled(provider, value),
+              ),
             ),
           ],
         ),
@@ -472,7 +480,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                 minimumSize: const Size(0, 36),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 textStyle: const TextStyle(
-                  fontSize: 10.5,
+                  fontSize: QdType.small,
                   fontWeight: FontWeight.w600,
                 ),
                 shape: RoundedRectangleBorder(
@@ -488,7 +496,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: palette.dim,
-                  fontSize: 9.5,
+                  fontSize: QdType.meta,
                   height: 1.3,
                 ),
               ),
@@ -505,7 +513,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
       text,
       style: TextStyle(
         color: palette.dim,
-        fontSize: 8.5,
+        fontSize: QdType.micro,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.9,
       ),
@@ -566,7 +574,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
               foregroundColor: palette.text,
               side: BorderSide(color: palette.border),
               minimumSize: const Size(0, 36),
-              textStyle: const TextStyle(fontSize: 10.5),
+              textStyle: const TextStyle(fontSize: QdType.small),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(9),
               ),
@@ -600,7 +608,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
             ),
             style: TextButton.styleFrom(
               foregroundColor: palette.muted,
-              textStyle: const TextStyle(fontSize: 10.5),
+              textStyle: const TextStyle(fontSize: QdType.small),
             ),
           ),
         ],
@@ -623,7 +631,7 @@ class _ProviderWizardState extends State<_ProviderWizard> {
                   'no topo ou nas configurações.',
                   style: TextStyle(
                     color: palette.dim,
-                    fontSize: 10,
+                    fontSize: QdType.meta,
                     height: 1.4,
                   ),
                 ),
@@ -734,7 +742,7 @@ class _StatusChip extends StatelessWidget {
         label,
         style: TextStyle(
           color: color,
-          fontSize: 9,
+          fontSize: QdType.micro,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -770,21 +778,9 @@ class _SurfaceRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: color.withValues(alpha: 0.35)),
-            ),
-            child: Text(
-              surface.surface.label,
-              style: TextStyle(
-                color: color,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          SurfaceChip(
+            surface: surface.surface,
+            authenticated: surface.authenticated,
           ),
           const SizedBox(width: 7),
           Expanded(
@@ -799,7 +795,7 @@ class _SurfaceRow extends StatelessWidget {
                       state,
                       style: TextStyle(
                         color: color,
-                        fontSize: 10,
+                        fontSize: QdType.meta,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -820,7 +816,7 @@ class _SurfaceRow extends StatelessWidget {
                     surface.reason!,
                     style: TextStyle(
                       color: palette.muted,
-                      fontSize: 9.5,
+                      fontSize: QdType.meta,
                       height: 1.3,
                     ),
                   ),
@@ -829,7 +825,10 @@ class _SurfaceRow extends StatelessWidget {
                     surface.location!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: palette.dim, fontSize: 8.5),
+                    style: TextStyle(
+                      color: palette.dim,
+                      fontSize: QdType.micro,
+                    ),
                   ),
               ],
             ),
@@ -887,15 +886,9 @@ class _SummaryRow extends StatelessWidget {
                       ),
                     ),
                     for (final surface in surfaces)
-                      Text(
-                        surface.surface.label,
-                        style: TextStyle(
-                          color: surface.authenticated
-                              ? palette.green
-                              : palette.yellow,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      SurfaceChip(
+                        surface: surface.surface,
+                        authenticated: surface.authenticated,
                       ),
                   ],
                 ),
@@ -903,10 +896,14 @@ class _SummaryRow extends StatelessWidget {
               ],
             ),
           ),
-          Switch(
-            key: Key('wizard-summary-toggle-${provider.name}'),
-            value: enabled,
-            onChanged: onChanged,
+          Semantics(
+            label: 'Mostrar ${provider.displayName} no painel',
+            toggled: enabled,
+            child: Switch(
+              key: Key('wizard-summary-toggle-${provider.name}'),
+              value: enabled,
+              onChanged: onChanged,
+            ),
           ),
         ],
       ),
@@ -939,7 +936,7 @@ class _GuideStep extends StatelessWidget {
             number,
             style: TextStyle(
               color: palette.muted,
-              fontSize: 9,
+              fontSize: QdType.micro,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -948,7 +945,11 @@ class _GuideStep extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: QdType.small,
+              height: 1.4,
+            ),
           ),
         ),
       ],

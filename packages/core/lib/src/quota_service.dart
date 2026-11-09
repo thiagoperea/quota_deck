@@ -171,7 +171,7 @@ class DefaultQuotaService implements QuotaService {
 
     final ProviderSnapshot snapshot;
     try {
-      snapshot = await adapter.read(_ctx).timeout(const Duration(seconds: 20));
+      snapshot = await adapter.read(_ctx).timeout(const Duration(seconds: 40));
     } on QdeckException catch (e) {
       return _fallbackOrError(adapter.id, e);
     } on TimeoutException {

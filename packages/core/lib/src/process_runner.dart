@@ -50,17 +50,33 @@ class DartProcessRunner implements ProcessRunner {
     Map<String, String>? environment,
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final result = await Process.run(
+    final process = await Process.start(
       executable,
       args,
       environment: environment,
       runInShell: false,
-    ).timeout(timeout);
-    return ProcessResultData(
-      exitCode: result.exitCode,
-      stdout: result.stdout?.toString() ?? '',
-      stderr: result.stderr?.toString() ?? '',
     );
+    final stdoutFuture = process.stdout.transform(utf8.decoder).join();
+    final stderrFuture = process.stderr.transform(utf8.decoder).join();
+    try {
+      final exitCode = await process.exitCode.timeout(timeout);
+      return ProcessResultData(
+        exitCode: exitCode,
+        stdout: await stdoutFuture,
+        stderr: await stderrFuture,
+      );
+    } on TimeoutException {
+      try {
+        process.kill(ProcessSignal.sigkill);
+      } catch (_) {}
+      try {
+        await process.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      throw TimeoutException(
+        '$executable excedeu ${timeout.inSeconds}s',
+        timeout,
+      );
+    }
   }
 
   @override
@@ -118,6 +134,16 @@ class DartProcessSession implements ProcessSession {
     try {
       _process.kill(ProcessSignal.sigterm);
     } catch (_) {}
+    try {
+      await _process.exitCode.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      try {
+        _process.kill(ProcessSignal.sigkill);
+      } catch (_) {}
+      try {
+        await _process.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
     try {
       await _process.stdin.close();
     } catch (_) {}

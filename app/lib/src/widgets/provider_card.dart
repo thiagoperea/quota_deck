@@ -5,6 +5,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 import '../theme.dart';
 import 'quota_bar.dart';
 import 'status_badge.dart';
+import 'surface_chip.dart';
 
 class ProviderAvatar extends StatelessWidget {
   const ProviderAvatar({super.key, required this.provider, this.size = 24});
@@ -173,7 +174,7 @@ class ProviderCard extends StatelessWidget {
                           : 'Último snapshot em cache',
                       style: TextStyle(
                         color: palette.dim,
-                        fontSize: 9,
+                        fontSize: QdType.micro,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
                       ),
@@ -187,7 +188,7 @@ class ProviderCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Ative o assistente para instalar ou conectar este provedor.',
-                style: TextStyle(color: palette.muted, fontSize: 10.5),
+                style: TextStyle(color: palette.muted, fontSize: QdType.small),
               ),
             ] else if (!snapshot.hasError) ...[
               const SizedBox(height: 8),
@@ -196,7 +197,10 @@ class ProviderCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Nenhuma janela de quota disponível.',
-                      style: TextStyle(color: palette.muted, fontSize: 10.5),
+                      style: TextStyle(
+                        color: palette.muted,
+                        fontSize: QdType.small,
+                      ),
                     ),
                   ),
                   if (onRetry != null)
@@ -208,7 +212,7 @@ class ProviderCard extends StatelessWidget {
                       ),
                       child: const Text(
                         'Tentar',
-                        style: TextStyle(fontSize: 10),
+                        style: TextStyle(fontSize: QdType.meta),
                       ),
                     ),
                 ],
@@ -230,7 +234,10 @@ class ProviderCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         _creditsLabel!,
-                        style: TextStyle(color: palette.muted, fontSize: 9.5),
+                        style: TextStyle(
+                          color: palette.muted,
+                          fontSize: QdType.meta,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -244,7 +251,10 @@ class ProviderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'fonte: ${_friendlySource(snapshot)}',
-                    style: TextStyle(color: palette.dim, fontSize: 9),
+                    style: TextStyle(
+                      color: palette.dim,
+                      fontSize: QdType.micro,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -254,7 +264,7 @@ class ProviderCard extends StatelessWidget {
                       ? 'atualizado ${relativeTime(snapshot.fetchedAt)}'
                       : 'conf. ${_confidenceLabel(snapshot.confidence)} · '
                             '${relativeTime(snapshot.fetchedAt)}',
-                  style: TextStyle(color: palette.dim, fontSize: 9),
+                  style: TextStyle(color: palette.dim, fontSize: QdType.micro),
                 ),
               ],
             ),
@@ -282,9 +292,9 @@ class ProviderCard extends StatelessWidget {
               entry.key!.toUpperCase(),
               style: TextStyle(
                 color: palette.dim,
-                fontSize: 8.5,
+                fontSize: QdType.micro,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
+                letterSpacing: 0.5,
               ),
             ),
           ),
@@ -346,7 +356,7 @@ class _Header extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: palette.text,
-                      fontSize: compact ? 12 : 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -355,28 +365,17 @@ class _Header extends StatelessWidget {
                       plan,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: palette.muted, fontSize: 10),
+                      style: TextStyle(
+                        color: palette.muted,
+                        fontSize: QdType.meta,
+                      ),
                     ),
                   if (snapshot.surface != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: palette.panel2,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: palette.border),
-                      ),
-                      child: Text(
-                        snapshot.surface!.label,
-                        style: TextStyle(
-                          color: palette.dim,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
+                    SurfaceChip(
+                      surface: snapshot.surface!,
+                      authenticated:
+                          snapshot.errors.isEmpty &&
+                          snapshot.windows.isNotEmpty,
                     ),
                 ],
               ),
@@ -385,7 +384,7 @@ class _Header extends StatelessWidget {
                   email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: palette.dim, fontSize: 9),
+                  style: TextStyle(color: palette.dim, fontSize: QdType.micro),
                 ),
             ],
           ),
@@ -429,10 +428,7 @@ class _WindowRow extends StatelessWidget {
                 window.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.muted,
-                  fontSize: compact ? 10 : 10.5,
-                ),
+                style: TextStyle(color: palette.muted, fontSize: 11),
               ),
             ),
             const SizedBox(width: 8),
@@ -440,7 +436,7 @@ class _WindowRow extends StatelessWidget {
               '${formatPercent(window.usedPercent)}%',
               style: TextStyle(
                 color: palette.text,
-                fontSize: compact ? 10 : 10.5,
+                fontSize: 11,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
@@ -461,13 +457,13 @@ class _WindowRow extends StatelessWidget {
                   : 'Reset em ${DateFormat('dd/MM/yyyy HH:mm').format(reset.toLocal())}',
               child: Text(
                 resetLabel,
-                style: TextStyle(color: palette.dim, fontSize: 9),
+                style: TextStyle(color: palette.dim, fontSize: QdType.micro),
               ),
             ),
             const Spacer(),
             Text(
               _sourceLabel(window.source),
-              style: TextStyle(color: palette.dim, fontSize: 9),
+              style: TextStyle(color: palette.dim, fontSize: QdType.micro),
             ),
           ],
         ),
@@ -559,7 +555,11 @@ class _AuthPanel extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             message,
-            style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: QdType.small,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 7),
           Row(
@@ -572,7 +572,7 @@ class _AuthPanel extends StatelessWidget {
                     foregroundColor: palette.muted,
                     minimumSize: const Size(0, 32),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    textStyle: const TextStyle(fontSize: 10),
+                    textStyle: const TextStyle(fontSize: QdType.meta),
                   ),
                   child: const Text('Já renovei'),
                 ),
@@ -590,7 +590,7 @@ class _AuthPanel extends StatelessWidget {
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   textStyle: const TextStyle(
-                    fontSize: 10,
+                    fontSize: QdType.meta,
                     fontWeight: FontWeight.w600,
                   ),
                   shape: RoundedRectangleBorder(
@@ -649,7 +649,7 @@ class _NotInstalledPanel extends StatelessWidget {
                   style: TextButton.styleFrom(
                     minimumSize: const Size(0, 30),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    textStyle: const TextStyle(fontSize: 10),
+                    textStyle: const TextStyle(fontSize: QdType.meta),
                   ),
                   child: const Text('Abrir assistente'),
                 ),
@@ -659,7 +659,11 @@ class _NotInstalledPanel extends StatelessWidget {
           Text(
             'Esta ferramenta não foi encontrada nesta máquina. '
             'O painel continua mostrando o card porque ela está habilitada.',
-            style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: QdType.small,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -715,14 +719,21 @@ class _ErrorPanel extends StatelessWidget {
                     minimumSize: const Size(0, 28),
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                   ),
-                  child: const Text('Tentar', style: TextStyle(fontSize: 10)),
+                  child: const Text(
+                    'Tentar',
+                    style: TextStyle(fontSize: QdType.meta),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
             error.message,
-            style: TextStyle(color: palette.muted, fontSize: 10.5, height: 1.4),
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: QdType.small,
+              height: 1.4,
+            ),
           ),
         ],
       ),

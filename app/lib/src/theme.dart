@@ -37,8 +37,8 @@ class QdPalette extends ThemeExtension<QdPalette> {
     panel2: Color(0xFF1D212A),
     border: Color(0xFF2A303C),
     text: Color(0xFFE8EBF2),
-    muted: Color(0xFF8B93A7),
-    dim: Color(0xFF697386),
+    muted: Color(0xFF98A1B3),
+    dim: Color(0xFF808A9D),
     green: Color(0xFF3DDC97),
     yellow: Color(0xFFF5C451),
     red: Color(0xFFFF6B6B),
@@ -47,17 +47,17 @@ class QdPalette extends ThemeExtension<QdPalette> {
   );
 
   static const light = QdPalette(
-    bg: Color(0xFFF3F5F9),
+    bg: Color(0xFFE9EEF5),
     panel: Color(0xFFFFFFFF),
-    panel2: Color(0xFFF8FAFC),
-    border: Color(0xFFDDE3EC),
-    text: Color(0xFF141922),
-    muted: Color(0xFF5B6577),
-    dim: Color(0xFF7C8798),
-    green: Color(0xFF0E9F6E),
-    yellow: Color(0xFFB7791F),
-    red: Color(0xFFD64545),
-    blue: Color(0xFF2B6CB0),
+    panel2: Color(0xFFFBFCFE),
+    border: Color(0xFFD5DDE8),
+    text: Color(0xFF121826),
+    muted: Color(0xFF4E5A6B),
+    dim: Color(0xFF66717F),
+    green: Color(0xFF087F5B),
+    yellow: Color(0xFF8A5A12),
+    red: Color(0xFFC53030),
+    blue: Color(0xFF1D4ED8),
     purple: Color(0xFF6B46C1),
   );
 
@@ -120,13 +120,30 @@ abstract final class QdColors {
   static const panel2 = Color(0xFF1D212A);
   static const border = Color(0xFF2A303C);
   static const text = Color(0xFFE8EBF2);
-  static const muted = Color(0xFF8B93A7);
-  static const dim = Color(0xFF697386);
+  static const muted = Color(0xFF98A1B3);
+  static const dim = Color(0xFF808A9D);
   static const green = Color(0xFF3DDC97);
   static const yellow = Color(0xFFF5C451);
   static const red = Color(0xFFFF6B6B);
   static const blue = Color(0xFF6EA8FE);
   static const purple = Color(0xFFB197FC);
+}
+
+/// Escala tipográfica única (6 passos).
+abstract final class QdType {
+  static const micro = 9.5;
+  static const meta = 10.0;
+  static const small = 11.0;
+  static const body = 12.5;
+  static const title = 15.0;
+  static const kpi = 22.0;
+}
+
+/// Raios de canto padronizados.
+abstract final class QdRadius {
+  static const control = 10.0;
+  static const card = 12.0;
+  static const dialog = 16.0;
 }
 
 ThemeData buildDarkTheme() => _buildTheme(Brightness.dark, QdPalette.dark);
@@ -198,7 +215,7 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(QdRadius.card),
         side: BorderSide(color: palette.border),
       ),
     ),
@@ -206,7 +223,7 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
       backgroundColor: palette.panel,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(QdRadius.dialog),
         side: BorderSide(color: palette.border),
       ),
       titleTextStyle: textTheme.titleLarge,
@@ -246,8 +263,11 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         foregroundColor: palette.muted,
-        highlightColor: palette.panel2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        highlightColor: palette.text.withValues(alpha: 0.06),
+        hoverColor: palette.text.withValues(alpha: 0.06),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(QdRadius.control),
+        ),
       ),
     ),
     switchTheme: SwitchThemeData(

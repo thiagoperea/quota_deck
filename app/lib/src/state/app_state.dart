@@ -39,6 +39,7 @@ class AppState extends ChangeNotifier {
   bool _loadingHistory = false;
   bool _wizardVisible = false;
   bool _detecting = false;
+  bool _windowActive = true;
   Future<void>? _detectionFuture;
   List<DetectionResult> _detections = const [];
   List<DoctorCheck> _doctorChecks = const [];
@@ -144,14 +145,20 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
-  List<UpcomingReset> upcomingResets({int limit = 4}) {
+  List<UpcomingReset> upcomingResets({
+    int limit = 4,
+    Duration horizon = const Duration(hours: 48),
+  }) {
     final now = DateTime.now().toUtc();
+    final cutoff = now.add(horizon);
     final resets = <UpcomingReset>[];
     for (final snapshot in visibleSnapshots) {
       if (_isAuthError(snapshot)) continue;
       for (final window in snapshot.windows) {
         final reset = window.resetsAt;
-        if (reset == null || !reset.isAfter(now)) continue;
+        if (reset == null || !reset.isAfter(now) || reset.isAfter(cutoff)) {
+          continue;
+        }
         resets.add(UpcomingReset(snapshot: snapshot, window: window));
       }
     }
@@ -340,8 +347,23 @@ class AppState extends ChangeNotifier {
     final seconds = _config.refreshSeconds;
     if (seconds <= 0) return;
     _timer = Timer.periodic(Duration(seconds: seconds), (_) {
-      if (!_disposed) unawaited(refresh(silent: true));
+      if (_disposed || !_windowActive) return;
+      unawaited(refresh(silent: true));
     });
+  }
+
+  /// Pausa o polling quando a janela está oculta na bandeja.
+  void setWindowActive(bool active) {
+    if (_windowActive == active) return;
+    _windowActive = active;
+    if (active) unawaited(refresh(silent: true));
+  }
+
+  /// Fecha recursos pendentes antes de encerrar o processo.
+  Future<void> shutdown() async {
+    _timer?.cancel();
+    _disposed = true;
+    await _api.close();
   }
 
   void _safeNotify() {
@@ -359,7 +381,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
-    _api.close();
+    unawaited(_api.close());
     super.dispose();
   }
 }

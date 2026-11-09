@@ -5,6 +5,8 @@ import 'screens/home_page.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class QuotaDeckApp extends StatelessWidget {
   const QuotaDeckApp({super.key, this.compactOverride});
 
@@ -18,6 +20,7 @@ class QuotaDeckApp extends StatelessWidget {
         final compact = compactOverride ?? detectCompactMode();
         return MaterialApp(
           title: 'QuotaDeck',
+          navigatorKey: rootNavigatorKey,
           debugShowCheckedModeBanner: false,
           theme: buildLightTheme(),
           darkTheme: buildDarkTheme(),

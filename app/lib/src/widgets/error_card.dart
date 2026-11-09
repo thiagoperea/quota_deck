@@ -72,7 +72,7 @@ class ErrorCard extends StatelessWidget {
                       minimumSize: const Size(0, 32),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       textStyle: const TextStyle(
-                        fontSize: 10.5,
+                        fontSize: QdType.small,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

@@ -72,7 +72,7 @@ class StatusBadge extends StatelessWidget {
                   text,
                   style: TextStyle(
                     color: color,
-                    fontSize: 9.5,
+                    fontSize: QdType.meta,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.1,
                   ),
@@ -92,7 +92,7 @@ class StatusBadge extends StatelessWidget {
                 'desatualizado',
                 style: TextStyle(
                   color: palette.muted,
-                  fontSize: 9,
+                  fontSize: QdType.micro,
                   fontWeight: FontWeight.w500,
                 ),
               ),

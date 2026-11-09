@@ -493,6 +493,19 @@ class DetectionResult {
     );
   }
 
+  factory DetectionResult.fromJson(Map<String, dynamic> json) =>
+      DetectionResult(
+        provider:
+            ProviderId.tryParse(json['provider']?.toString()) ??
+            ProviderId.opencode,
+        detected: _asBool(json['detected']),
+        reason: json['reason']?.toString(),
+        surfaces: (json['surfaces'] as List<dynamic>? ?? const [])
+            .whereType<Map>()
+            .map((m) => SurfaceState.fromJson(m.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+
   List<SurfaceState> get installedSurfaces =>
       surfaces.where((s) => s.installed).toList(growable: false);
 

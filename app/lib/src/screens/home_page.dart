@@ -52,7 +52,7 @@ class _HomePageState extends State<HomePage> {
     final state = context.watch<AppState>();
     final palette = QdPalette.of(context);
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    final compact = widget.compact || viewportWidth < 520;
+    final compact = widget.compact || viewportWidth < 600;
 
     return CallbackShortcuts(
       bindings: {
@@ -374,32 +374,37 @@ class _Header extends StatelessWidget {
 
     return Row(
       children: [
-        _LogoMark(size: compact ? 28 : 34),
-        SizedBox(width: compact ? 8 : 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'QuotaDeck',
-                style: TextStyle(
-                  color: palette.text,
-                  fontSize: compact ? 14 : 16,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
+        _LogoMark(size: compact ? 30 : 34),
+        if (!compact) ...[
+          SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'QuotaDeck',
+                  style: TextStyle(
+                    color: palette.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
                 ),
-              ),
-              if (!compact)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
                     'local-first · $enabled provedores',
-                    style: TextStyle(color: palette.muted, fontSize: 10.5),
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontSize: QdType.meta,
+                    ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ] else
+          const Spacer(),
         if (!compact) ...[
           Tooltip(
             message: generatedAt == null
@@ -482,7 +487,7 @@ class _HeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final size = compact ? 30.0 : 34.0;
+    final size = compact ? 36.0 : 38.0;
     return Tooltip(
       message: tooltip,
       child: SizedBox(
@@ -577,14 +582,13 @@ class _SummaryStats extends StatelessWidget {
     final nextReset = state.nextReset;
     final available = state.estimatedAvailablePercent;
 
-    final mostUsedValue = mostUsed == null
+    final usedValue = mostUsed == null
         ? '—'
-        : mostUsed.snapshot.provider.displayName;
-    final mostUsedSubtitle = mostUsed == null
-        ? 'Sem janelas de quota'
-        : '${mostUsed.window.label} · '
-              '${formatPercent(mostUsed.window.usedPercent)}% usado';
-    final mostUsedColor = mostUsed == null
+        : '${formatPercent(mostUsed.window.usedPercent)}%';
+    final usedSubtitle = mostUsed == null
+        ? 'sem janelas de quota'
+        : '${mostUsed.snapshot.provider.displayName} · ${mostUsed.window.label}';
+    final usedColor = mostUsed == null
         ? palette.dim
         : QuotaBar.colorFor(context, mostUsed.window.status);
 
@@ -592,7 +596,7 @@ class _SummaryStats extends StatelessWidget {
         ? '—'
         : _formatResetValue(nextReset.window.resetsAt!);
     final resetSubtitle = nextReset == null
-        ? 'Nenhum reset agendado'
+        ? 'nada nas próximas 48 h'
         : '${nextReset.snapshot.provider.displayName} · '
               '${nextReset.window.label}';
 
@@ -600,8 +604,8 @@ class _SummaryStats extends StatelessWidget {
         ? '—'
         : '${formatPercent(available)}%';
     final availableSubtitle = mostUsed == null
-        ? 'Sem dados para estimar'
-        : 'pior janela · ${mostUsed.snapshot.provider.displayName}';
+        ? 'sem dados para estimar'
+        : 'janela mais apertada · ${mostUsed.snapshot.provider.displayName}';
     final availableColor = available == null
         ? palette.dim
         : available >= 50
@@ -612,62 +616,40 @@ class _SummaryStats extends StatelessWidget {
 
     if (compact) {
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: palette.panel2,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(QdRadius.card),
           border: Border.all(color: palette.border),
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'PROVEDOR MAIS USADO',
-              style: TextStyle(
-                color: palette.dim,
-                fontSize: 8.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
+            Expanded(
+              child: _SummaryKpi(
+                label: 'MAIOR CONSUMO',
+                value: usedValue,
+                subtitle: usedSubtitle,
+                color: usedColor,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              mostUsedValue,
-              style: TextStyle(
-                color: mostUsedColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+            _KpiDivider(palette: palette),
+            Expanded(
+              child: _SummaryKpi(
+                label: 'PRÓXIMO RESET',
+                value: resetValue,
+                subtitle: resetSubtitle,
+                color: palette.yellow,
               ),
             ),
-            Text(
-              mostUsedSubtitle,
-              style: TextStyle(color: palette.muted, fontSize: 9.5),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              child: Divider(height: 1, color: palette.border),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: _MiniStat(
-                    label: 'PRÓXIMO RESET',
-                    value: resetValue,
-                    subtitle: resetSubtitle,
-                    color: palette.yellow,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MiniStat(
-                    label: 'USO DISPONÍVEL ESTIMADO',
-                    value: availableValue,
-                    subtitle: availableSubtitle,
-                    color: availableColor,
-                  ),
-                ),
-              ],
+            _KpiDivider(palette: palette),
+            Expanded(
+              child: _SummaryKpi(
+                label: 'DISPONÍVEL',
+                value: availableValue,
+                subtitle: availableSubtitle,
+                color: availableColor,
+              ),
             ),
           ],
         ),
@@ -678,10 +660,18 @@ class _SummaryStats extends StatelessWidget {
       builder: (context, constraints) {
         final cards = [
           _StatCard(
-            label: 'Provedor mais usado',
-            value: mostUsedValue,
-            subtitle: mostUsedSubtitle,
-            color: mostUsedColor,
+            key: const Key('summary-available'),
+            label: 'Disponível estimado',
+            value: availableValue,
+            subtitle: availableSubtitle,
+            color: availableColor,
+            large: true,
+          ),
+          _StatCard(
+            label: 'Maior consumo agora',
+            value: usedValue,
+            subtitle: usedSubtitle,
+            color: usedColor,
           ),
           _StatCard(
             label: 'Próximo reset',
@@ -689,20 +679,14 @@ class _SummaryStats extends StatelessWidget {
             subtitle: resetSubtitle,
             color: palette.yellow,
           ),
-          _StatCard(
-            label: 'Uso disponível estimado',
-            value: availableValue,
-            subtitle: availableSubtitle,
-            color: availableColor,
-          ),
         ];
-        if (constraints.maxWidth >= 640) {
+        if (constraints.maxWidth >= 720) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (var i = 0; i < cards.length; i++) ...[
                 if (i > 0) const SizedBox(width: 12),
-                Expanded(child: cards[i]),
+                Expanded(flex: i == 0 ? 5 : 4, child: cards[i]),
               ],
             ],
           );
@@ -720,73 +704,22 @@ class _SummaryStats extends StatelessWidget {
   }
 }
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.subtitle,
-    required this.color,
-  });
+class _KpiDivider extends StatelessWidget {
+  const _KpiDivider({required this.palette});
 
-  final String label;
-  final String value;
-  final String subtitle;
-  final Color color;
+  final QdPalette palette;
 
   @override
-  Widget build(BuildContext context) {
-    final palette = QdPalette.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [palette.text.withValues(alpha: 0.025), palette.panel2],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              color: palette.dim,
-              fontSize: 8.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: color,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.4,
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: palette.muted, fontSize: 10, height: 1.3),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    width: 1,
+    height: 46,
+    margin: const EdgeInsets.symmetric(horizontal: 8),
+    color: palette.border,
+  );
 }
 
-class _MiniStat extends StatelessWidget {
-  const _MiniStat({
+class _SummaryKpi extends StatelessWidget {
+  const _SummaryKpi({
     required this.label,
     required this.value,
     required this.subtitle,
@@ -803,14 +736,17 @@ class _MiniStat extends StatelessWidget {
     final palette = QdPalette.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: palette.dim,
-            fontSize: 8,
+            color: palette.muted,
+            fontSize: QdType.micro,
             fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
+            letterSpacing: 0.5,
           ),
         ),
         const SizedBox(height: 3),
@@ -820,18 +756,90 @@ class _MiniStat extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: color,
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: FontWeight.w700,
             letterSpacing: -0.2,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
         Text(
           subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: palette.muted, fontSize: 9),
+          style: TextStyle(color: palette.dim, fontSize: QdType.micro),
         ),
       ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.subtitle,
+    required this.color,
+    this.large = false,
+  });
+
+  final String label;
+  final String value;
+  final String subtitle;
+  final Color color;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [palette.text.withValues(alpha: 0.025), palette.panel2],
+        ),
+        borderRadius: BorderRadius.circular(QdRadius.card),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: QdType.micro,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: large ? QdType.kpi : 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.4,
+              height: 1.1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: palette.dim, fontSize: QdType.meta),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -868,7 +876,7 @@ class _Content extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, _) {
-        final wide = !compact && MediaQuery.sizeOf(context).width >= 900;
+        final wide = !compact && MediaQuery.sizeOf(context).width >= 980;
         if (wide) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,12 +932,12 @@ class _ResetsPanel extends StatelessWidget {
     final resets = state.upcomingResets(limit: compact ? 3 : 4);
     return _Panel(
       title: 'Próximos resets',
-      trailing: '48h',
+      trailing: 'próximas 48 h',
       compact: compact,
       child: resets.isEmpty
           ? Text(
               'Nenhum reset agendado.',
-              style: TextStyle(color: palette.muted, fontSize: 10.5),
+              style: TextStyle(color: palette.muted, fontSize: QdType.small),
             )
           : Column(
               children: [
@@ -971,14 +979,17 @@ class _ResetRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: palette.text,
-                    fontSize: compact ? 10 : 10.5,
+                    fontSize: compact ? QdType.meta : QdType.small,
                   ),
                 ),
                 Text(
                   '${_formatWhen(resetAt)} · ${relativeTime(resetAt)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: palette.muted, fontSize: 9),
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: QdType.micro,
+                  ),
                 ),
               ],
             ),
@@ -995,7 +1006,7 @@ class _ResetRow extends StatelessWidget {
               '${formatPercent(window.usedPercent)}%',
               style: TextStyle(
                 color: color,
-                fontSize: 9,
+                fontSize: QdType.micro,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1020,6 +1031,8 @@ class _TrendPanel extends StatelessWidget {
     final values =
         history?.samples.map((sample) => sample.usedPercent).toList() ??
         const <double>[];
+    final samples = values.length;
+    final collecting = samples < 3;
     final color = quota == null
         ? palette.green
         : QuotaBar.colorFor(context, quota.window.status);
@@ -1027,29 +1040,53 @@ class _TrendPanel extends StatelessWidget {
     return _Panel(
       title: 'Tendência',
       trailing: quota == null
-          ? '24h'
+          ? '24 h'
           : '${quota.snapshot.provider.displayName} · ${quota.window.label}',
       compact: compact,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Sparkline(values: values, color: color, height: compact ? 42 : 54),
+          if (collecting)
+            Container(
+              height: compact ? 42 : 54,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: palette.border),
+                borderRadius: BorderRadius.circular(QdRadius.control),
+              ),
+              child: Text(
+                samples == 0
+                    ? 'Sem amostras ainda — a tendência aparece após 3 leituras.'
+                    : 'Coletando amostras ($samples/3)…',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: palette.dim, fontSize: QdType.meta),
+              ),
+            )
+          else
+            Sparkline(values: values, color: color, height: compact ? 42 : 54),
           const SizedBox(height: 6),
           Row(
             children: [
-              Text('uso', style: TextStyle(color: palette.dim, fontSize: 9)),
-              const SizedBox(width: 10),
+              _LegendDot(color: color),
+              const SizedBox(width: 5),
               Text(
-                'warning 80%',
-                style: TextStyle(color: palette.dim, fontSize: 9),
+                'uso',
+                style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+              ),
+              const SizedBox(width: 12),
+              _LegendDot(color: palette.yellow),
+              const SizedBox(width: 5),
+              Text(
+                'atenção 80%',
+                style: TextStyle(color: palette.muted, fontSize: QdType.micro),
               ),
               const Spacer(),
-              if (history != null)
+              if (!collecting && history?.etaHours != null)
                 Text(
-                  'ETA ${_formatEta(history.etaHours)}',
+                  'ETA ${_formatEta(history!.etaHours)}',
                   style: TextStyle(
                     color: palette.blue,
-                    fontSize: 9,
+                    fontSize: QdType.micro,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1059,6 +1096,19 @@ class _TrendPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 6,
+    height: 6,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 }
 
 class _Panel extends StatelessWidget {
@@ -1094,7 +1144,7 @@ class _Panel extends StatelessWidget {
                   title,
                   style: TextStyle(
                     color: palette.text,
-                    fontSize: compact ? 11.5 : 12,
+                    fontSize: compact ? QdType.small : QdType.body,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1106,7 +1156,10 @@ class _Panel extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.right,
-                    style: TextStyle(color: palette.dim, fontSize: 9),
+                    style: TextStyle(
+                      color: palette.dim,
+                      fontSize: QdType.micro,
+                    ),
                   ),
                 ),
             ],
