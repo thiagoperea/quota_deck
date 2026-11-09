@@ -34,3 +34,4 @@ docs/pesquisa/fixtures/local/
 *.iml
 .idea/
 .vscode/
+dist/

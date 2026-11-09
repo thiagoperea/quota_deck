@@ -8,7 +8,7 @@
 PRODUCT_NAME = quota_deck
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.quotadeck.quotaDeck
+PRODUCT_BUNDLE_IDENTIFIER = com.thiagoperea.quotaDeck
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.quotadeck. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.thiagoperea. All rights reserved.
