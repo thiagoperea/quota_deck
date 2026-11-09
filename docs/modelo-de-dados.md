@@ -192,7 +192,7 @@ CREATE INDEX idx_snapshots_window_time
 - Retenção: 30 dias (config).
 - Amostragem: 5 min ou delta >= 1%.
 - `stale` não é gravado por padrão.
-- Export: CSV com `provider,window_id,used_percent,fetched_at`.
+- Export: **roadmap** (CSV `provider,window_id,used_percent,fetched_at`). Hoje há `qdeck history` em texto/JSON.
 
 ### 5.1 Burn rate
 
@@ -272,7 +272,7 @@ Permissões: diretório `0700`; arquivos `0600` quando possível.
 ## 7. Migrações
 
 - `schemaVersion` inteiro; migração sequencial.
-- Schema mais novo que o app: modo somente leitura + aviso.
+- Schema mais novo que o app: **roadmap** (modo somente leitura + aviso); hoje o parse é tolerante e cai no default.
 - Mudança de provider: normalizar no adapter; manter o modelo estável.
 - Fixtures versionadas por `schemaVersion`.
 

@@ -8,6 +8,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 
 import 'exit_codes.dart';
 import 'render.dart';
+import 'version.dart';
 
 typedef ServiceFactory = Future<QuotaService> Function({
   required AppPaths paths,
@@ -30,7 +31,7 @@ class QdeckCli {
     Map<String, String>? env,
     bool? stdoutHasTerminal,
     this.serviceFactory,
-    this.version = '0.1.0',
+    this.version = cliVersion,
   }) : out = out ?? stdout,
        err = err ?? stderr,
        env = env ?? Platform.environment,

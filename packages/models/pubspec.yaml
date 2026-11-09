@@ -1,6 +1,6 @@
 name: quota_deck_models
 description: DTOs, config e utilitários compartilhados do QuotaDeck (web-safe).
-version: 0.1.0
+version: 0.5.0
 publish_to: none
 
 environment:

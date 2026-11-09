@@ -60,10 +60,18 @@ class CodexProvider implements ProviderAdapter {
   }
 
   String? _desktopDir(ProviderContext ctx) {
-    final local = ctx.env['LOCALAPPDATA'];
-    if (local == null || local.isEmpty) return null;
-    final dir = Directory(p.join(local, 'OpenAI', 'Codex'));
-    return dir.existsSync() ? dir.path : null;
+    final home = ctx.env['HOME'] ?? ctx.env['USERPROFILE'] ?? '';
+    final candidates = <String>[
+      if ((ctx.env['LOCALAPPDATA'] ?? '').isNotEmpty)
+        p.join(ctx.env['LOCALAPPDATA']!, 'OpenAI', 'Codex'),
+      if (home.isNotEmpty)
+        p.join(home, 'Library', 'Application Support', 'Codex'),
+      if (home.isNotEmpty) p.join(home, '.config', 'Codex'),
+    ];
+    for (final candidate in candidates) {
+      if (Directory(candidate).existsSync()) return candidate;
+    }
+    return null;
   }
 
   Future<ProviderSurface> _surfaceOf(ProviderContext ctx) async {
@@ -137,16 +145,8 @@ class CodexProvider implements ProviderAdapter {
     return checks;
   }
 
-  Future<bool> _binaryAvailable(ProviderContext ctx) async {
-    try {
-      final result = await ctx.process.run(_executable, [
-        '--version',
-      ], timeout: const Duration(seconds: 3));
-      return result.ok;
-    } catch (_) {
-      return false;
-    }
-  }
+  Future<bool> _binaryAvailable(ProviderContext ctx) async =>
+      await ctx.discovery.firstBinary(const ['codex', 'codex.cmd']) != null;
 
   Future<_CodexAuth?> _readAuth(ProviderContext ctx) async {
     final file = AppPaths.codexAuth(env: ctx.env);

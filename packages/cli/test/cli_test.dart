@@ -203,7 +203,7 @@ void main() {
   test('version imprime a versão', () async {
     final code = await cli().run(['version']);
     expect(code, QdeckExitCode.ok);
-    expect(out.toString(), contains('qdeck 0.1.0'));
+    expect(out.toString(), contains('qdeck 0.5.0'));
     expect(err.toString(), isEmpty);
   });
 

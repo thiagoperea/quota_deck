@@ -21,11 +21,23 @@ flutter doctor -v
 ```bash
 cd quota_deck
 
-(cd packages/models && dart pub get)
-(cd packages/core && dart pub get)
-(cd packages/cli && dart pub get)
-(cd app && flutter pub get)
+dart tool/tasks.dart setup
 ```
+
+`tool/tasks.dart` funciona no Windows, macOS e Linux; os alvos do `Makefile` apenas delegam para ele (`make setup`, `make analyze`, `make test`, `make build-windows`, `make installer`).
+
+## Windows (instalador)
+
+O CI gera `quota_deck-<versão>-setup.exe` (Inno Setup) junto do zip portátil:
+
+```powershell
+# build local do instalador (requer Inno Setup 6 no PATH)
+cd app; flutter build windows --release
+cd ..
+dart tool/tasks.dart installer
+```
+
+O instalador usa `%LOCALAPPDATA%\Programs\QuotaDeck` (sem admin), cria atalho no Menu Iniciar, desinstalador e opcionalmente inicia com o Windows.
 
 ## Rodar o app
 
@@ -52,6 +64,8 @@ flutter build macos --release
 flutter build windows --release
 flutter build linux --release
 ```
+
+Ou `dart tool/tasks.dart build-windows` (idem macOS/Linux).
 
 Saídas:
 

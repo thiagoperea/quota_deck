@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:quota_deck_core/quota_deck_core.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../version.dart';
 import 'quota_api.dart';
 
 /// Implementação desktop: o core roda no mesmo processo do app.
@@ -42,7 +43,7 @@ class LocalQuotaApi implements QuotaApi {
       envelope: envelope,
       config: config,
       meta: ApiMeta(
-        version: '0.4.0',
+        version: appVersion,
         dataDir: paths.maskedDataDir,
         providers: [
           for (final provider in ProviderId.values)

@@ -1,26 +1,20 @@
-SHELL := /bin/zsh
+SHELL := /bin/sh
 
-.PHONY: setup format analyze test test-core test-app run-macos run-windows run-linux build-macos build-windows build-linux cli cli-install mock clean
+.PHONY: setup format analyze test test-core test-app run-windows run-macos run-linux \
+	build-windows build-macos build-linux cli cli-install mock clean installer
 
+# Runner único cross-platform (Windows/macOS/Linux). Requer `dart` no PATH.
 setup:
-	cd packages/models && dart pub get
-	cd packages/core && dart pub get
-	cd packages/cli && dart pub get
-	cd app && flutter pub get
+	dart tool/tasks.dart setup
 
 format:
-	cd packages/models && dart format lib test
-	cd packages/core && dart format lib test tool
-	cd packages/cli && dart format lib bin test
-	cd app && dart format lib test
+	dart tool/tasks.dart format
 
 analyze:
-	cd packages/models && dart analyze
-	cd packages/core && dart analyze
-	cd packages/cli && dart analyze
-	cd app && dart analyze lib test
+	dart tool/tasks.dart analyze
 
-test: test-core test-app
+test:
+	dart tool/tasks.dart test
 
 test-core:
 	cd packages/models && dart test
@@ -30,26 +24,29 @@ test-core:
 test-app:
 	cd app && flutter test
 
-run-macos:
-	cd app && flutter run -d macos
-
 run-windows:
-	cd app && flutter run -d windows
+	dart tool/tasks.dart run-windows
+
+run-macos:
+	dart tool/tasks.dart run-macos
 
 run-linux:
-	cd app && flutter run -d linux
-
-build-macos:
-	cd app && flutter build macos --release
+	dart tool/tasks.dart run-linux
 
 build-windows:
-	cd app && flutter build windows --release
+	dart tool/tasks.dart build-windows
+
+build-macos:
+	dart tool/tasks.dart build-macos
 
 build-linux:
-	cd app && flutter build linux --release
+	dart tool/tasks.dart build-linux
+
+installer:
+	dart tool/tasks.dart installer
 
 cli:
-	cd packages/cli && dart run bin/qdeck.dart $(ARGS)
+	dart tool/tasks.dart cli $(ARGS)
 
 cli-install:
 	cd packages/cli && dart pub global activate --source path .
@@ -58,4 +55,5 @@ mock:
 	cd app && flutter run -d macos --dart-define=QDECK_MOCK=1
 
 clean:
+	cd packages/models && dart pub cache clean >/dev/null 2>&1 || true
 	rm -rf app/build packages/*/.dart_tool packages/*/build
