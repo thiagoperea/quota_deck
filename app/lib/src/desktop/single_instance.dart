@@ -22,7 +22,7 @@ class SingleInstance {
       server.listen((client) async {
         try {
           final data = await client
-              .transform(utf8.decoder)
+              .map((chunk) => utf8.decode(chunk))
               .join()
               .timeout(const Duration(seconds: 2));
           if (data.contains('qdeck:show')) {
