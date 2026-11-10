@@ -35,3 +35,5 @@ docs/pesquisa/fixtures/local/
 .idea/
 .vscode/
 dist/
+dist-installer/
+dist-mock/

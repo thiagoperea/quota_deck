@@ -24,10 +24,21 @@ Future<void> _pumpSheet(WidgetTester tester, AppState state) async {
       value: state,
       child: MaterialApp(
         theme: buildDarkTheme(),
-        home: Scaffold(body: SettingsSheet(state: state)),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                key: const Key('open-settings'),
+                onPressed: () => showSettingsSheet(context),
+                child: const Text('Abrir'),
+              ),
+            ),
+          ),
+        ),
       ),
     ),
   );
+  await tester.tap(find.byKey(const Key('open-settings')));
   await tester.pumpAndSettle();
 }
 
@@ -52,6 +63,8 @@ void main() {
     await tester.tap(find.byKey(const Key('settings-save')));
     await tester.pumpAndSettle();
 
+    expect(find.text('Descartar alterações?'), findsNothing);
+    expect(find.byKey(const Key('settings-save')), findsNothing);
     expect(state.config.refreshSeconds, 120);
     expect(state.config.theme, 'light');
     expect(state.config.isEnabled(ProviderId.opencode), isFalse);

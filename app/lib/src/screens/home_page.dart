@@ -11,12 +11,14 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../version.dart';
 import '../widgets/error_card.dart';
+import '../widgets/mock_controls.dart';
 import '../widgets/onboarding_card.dart';
 import '../widgets/provider_card.dart';
 import '../widgets/provider_wizard.dart';
 import '../widgets/quota_bar.dart';
 import '../widgets/settings_sheet.dart';
 import '../widgets/sparkline.dart';
+import 'mini_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.compact = false});
@@ -51,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    if (state.miniMode) return MiniPage(state: state);
     final palette = QdPalette.of(context);
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final compact = widget.compact || viewportWidth < 600;
@@ -181,7 +184,7 @@ class _HomePageState extends State<HomePage> {
         provider == ProviderId.claude &&
         snapshot.surface == ProviderSurface.desktop;
     String? bundled;
-    if (provider == ProviderId.claude) {
+    if (provider == ProviderId.claude && !desktopHistory) {
       try {
         for (final file in AppPaths.bundledClaudeBinaries()) {
           if (await file.exists()) {
@@ -194,6 +197,7 @@ class _HomePageState extends State<HomePage> {
 
     var checking = false;
     String? result;
+    if (!context.mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -208,13 +212,21 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Text(
                     desktopHistory
-                        ? 'O Claude Desktop só expõe o histórico local (estimado). '
-                              'Para dados ao vivo com reset, faça login no Claude Code.'
+                        ? 'O QuotaDeck lê a sessão do Claude Desktop (app) '
+                              'automaticamente. Se os dados pararem, abra o '
+                              'Claude Desktop e faça login de novo — não é '
+                              'preciso usar o CLI.'
                         : 'O QuotaDeck não renova tokens automaticamente. '
                               'Faça login na ferramenta original e verifique.',
                   ),
                   const SizedBox(height: 12),
-                  if (command != null) ...[
+                  if (desktopHistory)
+                    Text(
+                      'O token fica no próprio Claude Desktop; o QuotaDeck '
+                      'apenas lê a sessão local.',
+                      style: TextStyle(color: palette.muted, fontSize: 11.5),
+                    )
+                  else if (command != null) ...[
                     Text(
                       'No terminal, execute:',
                       style: TextStyle(color: palette.muted, fontSize: 11.5),
@@ -439,6 +451,10 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+        ],
+        if (state.mockApi != null) ...[
+          MockControlsButton(compact: compact),
+          const SizedBox(width: 4),
         ],
         _HeaderButton(
           key: const Key('header-refresh'),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../api/mock_api.dart';
 import '../api/quota_api.dart';
 
 class TightestQuota {
@@ -20,9 +21,19 @@ class UpcomingReset {
 }
 
 class AppState extends ChangeNotifier {
-  AppState(this._api);
+  AppState(
+    this._api, {
+    this.onLaunchAtLoginChanged,
+    this.isLaunchAtLoginEnabled,
+  });
 
   final QuotaApi _api;
+
+  /// Aplica a preferência no sistema operacional. `null` em testes/CLI.
+  final Future<bool> Function(bool enabled)? onLaunchAtLoginChanged;
+
+  /// Lê o estado real do autostart para refletir no toggle.
+  final Future<bool> Function()? isLaunchAtLoginEnabled;
 
   SnapshotEnvelope? _envelope;
   AppConfig _config = AppConfig.defaults().copyWith(theme: 'dark');
@@ -40,6 +51,7 @@ class AppState extends ChangeNotifier {
   bool _wizardVisible = false;
   bool _detecting = false;
   bool _windowActive = true;
+  bool _miniMode = false;
   Future<void>? _detectionFuture;
   List<DetectionResult> _detections = const [];
   List<DoctorCheck> _doctorChecks = const [];
@@ -55,6 +67,44 @@ class AppState extends ChangeNotifier {
   List<DoctorCheck> get doctorChecks => _doctorChecks;
   List<DetectionResult> get detections => _detections;
   bool get detecting => _detecting;
+
+  /// Janela mini (popover da bandeja) em vez do painel completo.
+  bool get miniMode => _miniMode;
+
+  void setMiniMode(bool value) {
+    if (_miniMode == value) return;
+    _miniMode = value;
+    _safeNotify();
+  }
+
+  /// `null` em produção; usado pelos controles de cenário do mock.
+  MockApi? get mockApi => _api is MockApi ? _api : null;
+
+  /// Troca o cenário do mock e recarrega o envelope do zero.
+  Future<void> applyMockScenario(MockScenario scenario) async {
+    final mock = mockApi;
+    if (mock == null) return;
+    mock.setScenario(scenario);
+
+    _initializing = false;
+    _detectionFuture = null;
+    _detections = const [];
+    _doctorChecks = const [];
+    _history.clear();
+    _envelope = null;
+    _meta = null;
+    _error = null;
+    _initialized = false;
+    _loading = true;
+    _refreshing = false;
+    _safeNotify();
+
+    if (scenario == MockScenario.loading) {
+      unawaited(initialize(force: true));
+      return;
+    }
+    await initialize(force: true);
+  }
 
   DetectionResult? detectionFor(ProviderId provider) {
     for (final detection in _detections) {
@@ -108,7 +158,11 @@ class AppState extends ChangeNotifier {
           return true;
         })
         .toList(growable: false);
-    enabled.sort((a, b) => a.provider.index.compareTo(b.provider.index));
+    enabled.sort(
+      (a, b) => a.provider.displayName.toLowerCase().compareTo(
+        b.provider.displayName.toLowerCase(),
+      ),
+    );
     return enabled;
   }
 
@@ -201,6 +255,14 @@ class AppState extends ChangeNotifier {
       _config = summary.config;
       _meta = summary.meta;
       _error = null;
+      final actualLaunchAtLogin = await isLaunchAtLoginEnabled?.call();
+      if (actualLaunchAtLogin != null &&
+          actualLaunchAtLogin != _config.launchAtLogin) {
+        _config = _config.copyWith(launchAtLogin: actualLaunchAtLogin);
+      }
+      if (_config.launchAtLogin) {
+        unawaited(_applyLaunchAtLogin(true));
+      }
       _scheduleTimer();
       _loading = false;
       _initialized = true;
@@ -254,9 +316,18 @@ class AppState extends ChangeNotifier {
     _saving = true;
     _safeNotify();
     try {
+      final previous = _config;
       final saved = await _api.saveSettings(next);
       _config = saved;
       _error = null;
+      if (previous.launchAtLogin != saved.launchAtLogin) {
+        final applied = await _applyLaunchAtLogin(saved.launchAtLogin);
+        if (!applied) {
+          _error =
+              'Configurações salvas, mas não foi possível alterar a '
+              'inicialização automática do sistema.';
+        }
+      }
       _scheduleTimer();
       return true;
     } on ApiException catch (error) {
@@ -268,6 +339,16 @@ class AppState extends ChangeNotifier {
     } finally {
       _saving = false;
       _safeNotify();
+    }
+  }
+
+  Future<bool> _applyLaunchAtLogin(bool enabled) async {
+    final callback = onLaunchAtLoginChanged;
+    if (callback == null) return true;
+    try {
+      return await callback(enabled);
+    } catch (_) {
+      return false;
     }
   }
 

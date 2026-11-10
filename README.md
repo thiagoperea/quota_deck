@@ -8,10 +8,11 @@ Ele escaneia o que está instalado (Desktop e CLI), lê a credencial local de ca
 
 - Detecção por superfície: separa **Desktop** e **CLI**, mostra versão/caminho/conta e só exibe no assistente o que existe na máquina.
 - OpenCode lê o banco XDG (`~/.local/share/opencode/opencode.db`) ou o legado `%LOCALAPPDATA%`.
-- Claude Desktop usa o histórico local (`plan-usage-history.json`, estimado); Claude Code usa a API OAuth ao vivo.
-- Ícone na bandeja e assistente guiado por provedor, com instruções de login/refresh.
+- Claude: lê a sessão do **Claude Desktop (GUI)** e do Claude Code CLI e consulta a API OAuth ao vivo. Sem sessão, cai no histórico local estimado.
+- Ícone na bandeja com popover mini (resumo + um clique para o dashboard) e assistente guiado por provedor.
 - Provedor mais usado, próximo reset e uso disponível estimado no topo.
-- Clique abre a janela compacta; menu abre o dashboard ou atualiza.
+- Clique abre o mini grudado no canto da bandeja; menu abre o dashboard completo ou atualiza.
+- Opção "Iniciar com o sistema" nas configurações: sobe direto na bandeja.
 - Janelas de 5h, semanais e mensais por provedor, com reset e status.
 - Histórico local em SQLite com burn rate e ETA.
 - CLI `qdeck` para terminal, scripts e statusline.
@@ -39,6 +40,25 @@ flutter build linux --release
 ```
 
 Os artifacts também são gerados no GitHub Actions (`.app`, `.exe` e bundle Linux).
+
+## Mock de layout
+
+Para validar todos os estados da UI sem credenciais:
+
+```bash
+cd app
+flutter run -d windows --dart-define=QDECK_MOCK=1
+```
+
+O botão de frasco no header (e no mini) abre o seletor de cenários:
+
+- **Normal** — quatro provedores com dados realistas.
+- **Status** — ok, warning, critical, limited e unknown.
+- **Estados de card** — auth ausente/expirado, permissão, erro de schema, stale, sem janelas, não instalado e superfícies Desktop/CLI/IDE.
+- **Grupos e textos longos** — muitas janelas, grupos e rótulos compridos.
+- **Um provedor**, **vazio**, **erro inicial** e **carregando**.
+
+O mesmo seletor alterna entre **mini**, **compacto** e **dashboard**. O modo mock usa uma porta de instância própria, então pode rodar junto com o app instalado.
 
 ## CLI
 
@@ -100,7 +120,7 @@ Detalhes em [`docs/seguranca.md`](docs/seguranca.md).
 ## Limitações
 
 - Antigravity precisa do app aberto para o RPC local.
-- Claude Code com token expirado pede para abrir o Claude Code e renovar.
+- Claude Desktop: o QuotaDeck lê a sessão local do app (safeStorage). Se ela expirar, abra o Claude Desktop e faça login; o Claude Code CLI é opcional.
 - Codex usa `wham/usage` quando o binário `codex` não está no PATH.
 - Tray no Linux depende de um painel com AppIndicator (KDE, Ubuntu com extensão etc.).
 

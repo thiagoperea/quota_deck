@@ -123,12 +123,36 @@ void main() {
     });
 
     test('labels and kinds', () {
-      expect(labelForWindow('rolling'), 'Rolling 5h');
+      expect(labelForWindow('rolling'), '5 horas');
       expect(labelForWindow('seven_day_opus'), 'Semanal Opus');
       expect(kindForWindow('five_hour'), WindowKind.rolling);
       expect(kindForWindow('seven_day'), WindowKind.weekly);
       expect(kindForWindow('x', durationSeconds: 18000), WindowKind.session);
       expect(kindForWindow('x', durationSeconds: 604800), WindowKind.weekly);
+    });
+
+    test('ordena janelas curtas antes das longas', () {
+      QuotaWindow w(String id, WindowKind kind) => QuotaWindow(
+        id: id,
+        label: id,
+        kind: kind,
+        usedPercent: 0,
+        remainingPercent: 100,
+        status: QuotaStatus.ok,
+        source: SourceKind.api,
+      );
+      final sorted = sortWindowsForDisplay([
+        w('weekly', WindowKind.weekly),
+        w('session', WindowKind.session),
+        w('monthly', WindowKind.monthly),
+        w('weekly-2', WindowKind.weekly),
+      ]);
+      expect(sorted.map((w) => w.id).toList(), [
+        'session',
+        'weekly',
+        'weekly-2',
+        'monthly',
+      ]);
     });
 
     test('relative time', () {

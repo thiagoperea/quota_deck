@@ -25,8 +25,8 @@ QuotaStatus statusForUsed(
 
 String labelForWindow(String id, [String? fallback]) {
   const labels = {
-    'rolling': 'Rolling 5h',
-    'rolling-5h': 'Rolling 5h',
+    'rolling': '5 horas',
+    'rolling-5h': '5 horas',
     '5h': '5 horas',
     'weekly': 'Semanal (7d)',
     '7d': 'Semanal (7d)',
@@ -72,6 +72,28 @@ WindowKind kindForWindow(String id, {int? durationSeconds}) {
   }
 }
 
+int _displayRank(WindowKind kind) => switch (kind) {
+  WindowKind.rolling => 0,
+  WindowKind.session => 1,
+  WindowKind.weekly => 2,
+  WindowKind.monthly => 3,
+  WindowKind.model => 4,
+  WindowKind.credits => 5,
+  WindowKind.unknown => 6,
+};
+
+/// Ordena janelas para leitura: curtas (5h) antes das longas (7d/30d),
+/// mantendo a ordem original entre janelas do mesmo tipo.
+List<QuotaWindow> sortWindowsForDisplay(Iterable<QuotaWindow> windows) {
+  final entries = windows.toList().asMap().entries.toList();
+  entries.sort((a, b) {
+    final rank = _displayRank(a.value.kind)
+        .compareTo(_displayRank(b.value.kind));
+    return rank != 0 ? rank : a.key.compareTo(b.key);
+  });
+  return [for (final entry in entries) entry.value];
+}
+
 String durationLabel(int seconds) {
   if (seconds == 604800) return '7d';
   if (seconds % 86400 == 0) return '${seconds ~/ 86400}d';
@@ -87,15 +109,17 @@ String relativeTime(DateTime? value, {DateTime? now}) {
   final diff = v.difference(n);
   final past = diff.isNegative;
   final d = diff.abs();
-  String amount;
-  if (d.inSeconds < 45) {
-    return 'agora';
-  } else if (d.inMinutes < 60) {
-    amount = '${d.inMinutes} min';
-  } else if (d.inHours < 24) {
-    amount = '${d.inHours} h';
+  if (d.inSeconds < 45) return 'agora';
+  final days = d.inDays;
+  final hours = d.inHours % 24;
+  final minutes = d.inMinutes % 60;
+  final String amount;
+  if (days > 0) {
+    amount = hours > 0 ? '$days d $hours h' : '$days d';
+  } else if (d.inHours > 0) {
+    amount = minutes > 0 ? '${d.inHours} h $minutes min' : '${d.inHours} h';
   } else {
-    amount = '${d.inDays} d';
+    amount = '${d.inMinutes} min';
   }
   return past ? 'há $amount' : 'em $amount';
 }

@@ -13,6 +13,7 @@ Future<AppState> _pumpApp(
   bool empty = false,
   bool onboarded = true,
   Set<ProviderId>? installed,
+  MockScenario? scenario,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -23,6 +24,7 @@ Future<AppState> _pumpApp(
     MockApi(
       empty: empty,
       installedProviders: installed,
+      scenario: scenario,
       config: AppConfig.defaults().copyWith(
         theme: 'dark',
         refreshSeconds: 0,
@@ -32,6 +34,7 @@ Future<AppState> _pumpApp(
   );
   addTearDown(state.dispose);
   await state.initialize();
+  await state.detectProviders();
 
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
@@ -77,7 +80,10 @@ void main() {
     expect(find.byKey(const Key('provider-card-antigravity')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-codex')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('Como renovar'), findsOneWidget);
+    expect(
+      find.text('fonte: sessão do Claude Desktop (ao vivo)'),
+      findsOneWidget,
+    );
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
     expect(find.text('DISPONÍVEL ESTIMADO'), findsOneWidget);
@@ -103,6 +109,80 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('mock controls + botões do header cabem em 420', (tester) async {
+    await _pumpApp(tester, compact: true, size: const Size(420, 900));
+
+    for (final key in const [
+      'mock-controls',
+      'header-refresh',
+      'header-wizard',
+      'header-settings',
+    ]) {
+      final finder = find.byKey(Key(key));
+      expect(finder, findsOneWidget);
+      expect(tester.getTopLeft(finder).dx, lessThan(420));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('modo mini lista as janelas e abre o dashboard', (tester) async {
+    final state = await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(380, 500),
+    );
+
+    state.setMiniMode(true);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('quota-deck-mini')), findsOneWidget);
+    expect(find.byKey(const Key('mini-open-dashboard')), findsOneWidget);
+    expect(find.text('5 horas'), findsWidgets);
+    expect(find.text('Semanal (7d)'), findsWidgets);
+    expect(find.text('DISPONÍVEL'), findsNothing);
+    expect(find.textContaining('v0.5'), findsNothing);
+    expect(find.byKey(const Key('provider-card-opencode')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mock de estados extremos renderiza todos os cards', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      compact: false,
+      size: const Size(1200, 1600),
+      scenario: MockScenario.edgeCases,
+    );
+
+    expect(find.byKey(const Key('provider-card-claude')), findsWidgets);
+    expect(find.byKey(const Key('provider-card-opencode')), findsWidgets);
+    expect(find.text('Credencial ausente'), findsWidgets);
+    expect(find.text('Não instalado'), findsWidgets);
+    expect(find.textContaining('Créditos'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('controles de mock trocam o cenário', (tester) async {
+    final state = await _pumpApp(
+      tester,
+      compact: false,
+      size: const Size(1200, 900),
+    );
+
+    expect(find.byKey(const Key('mock-controls')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mock-controls')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mock-sheet')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('mock-scenario-edgeCases')));
+    await tester.pumpAndSettle();
+
+    expect(state.mockApi!.scenario, MockScenario.edgeCases);
+    expect(find.byKey(const Key('provider-card-claude')), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('onboarding mostra comandos quando não há provedores', (
     tester,
   ) async {
@@ -117,7 +197,7 @@ void main() {
     expect(find.text('Nenhum provedor detectado'), findsOneWidget);
     expect(find.text('opencode'), findsOneWidget);
     expect(find.text('codex'), findsOneWidget);
-    expect(find.text('claude'), findsOneWidget);
+    expect(find.textContaining('sessão do app'), findsOneWidget);
     expect(find.text('Verificar novamente'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -133,7 +213,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('primeira execução abre o assistente de provedores', (
+  testWidgets('primeira execução com tudo conectado abre o resumo', (
     tester,
   ) async {
     await _pumpApp(
@@ -145,7 +225,7 @@ void main() {
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
     expect(find.text('Configurar provedores'), findsOneWidget);
-    expect(find.byKey(const Key('wizard-toggle-opencode')), findsOneWidget);
+    expect(find.text('Tudo pronto'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -174,6 +254,7 @@ void main() {
       size: const Size(420, 900),
       onboarded: false,
       installed: {ProviderId.opencode, ProviderId.claude},
+      scenario: MockScenario.edgeCases,
     );
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);

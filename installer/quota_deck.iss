@@ -1,5 +1,5 @@
 ; Instalador Windows do QuotaDeck (Inno Setup 6+).
-; Uso: iscc /DMyAppVersion=0.5.0 /DSourceDir=<...>\Release installer\quota_deck.iss
+; Uso: iscc /DMyAppVersion=0.6.0 /DSourceDir=<...>\Release installer\quota_deck.iss
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -52,7 +52,7 @@ Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "QuotaDeck"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "QuotaDeck"; ValueData: """{app}\{#MyAppExeName}"" --startup"; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir {#MyAppName}"; Flags: nowait postinstall skipifsilent

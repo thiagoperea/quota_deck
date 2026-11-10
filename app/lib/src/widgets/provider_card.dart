@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../theme.dart';
@@ -13,47 +13,38 @@ class ProviderAvatar extends StatelessWidget {
   final ProviderId provider;
   final double size;
 
+  static const _svgLogos = {
+    ProviderId.claude: 'assets/providers/claude.svg',
+    ProviderId.codex: 'assets/providers/codex.svg',
+  };
+
+  static const _pngLogos = {
+    ProviderId.opencode: 'assets/providers/opencode.png',
+    ProviderId.antigravity: 'assets/providers/antigravity.png',
+  };
+
   @override
   Widget build(BuildContext context) {
-    final (colors, initials) = switch (provider) {
-      ProviderId.opencode => (
-        const [Color(0xFF3DDC97), Color(0xFF1F9E6B)],
-        'OC',
-      ),
-      ProviderId.antigravity => (
-        const [Color(0xFF6EA8FE), Color(0xFFB197FC)],
-        'AG',
-      ),
-      ProviderId.codex => (const [Color(0xFFE8EBF2), Color(0xFF9AA4B8)], 'CX'),
-      ProviderId.claude => (const [Color(0xFFF5C451), Color(0xFFE08A3C)], 'CL'),
-    };
+    final svg = _svgLogos[provider];
+    final png = _pngLogos[provider];
+    final Widget logo = svg != null
+        ? SvgPicture.asset(svg, width: size, height: size)
+        : Image.asset(
+            png!,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          );
 
     return Semantics(
       label: provider.displayName,
       image: true,
       excludeSemantics: true,
-      child: Container(
+      child: SizedBox(
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: colors,
-          ),
-          borderRadius: BorderRadius.circular(size * 0.3),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          initials,
-          style: TextStyle(
-            color: const Color(0xFF0B0D11),
-            fontSize: size * 0.42,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.2,
-          ),
-        ),
+        child: Center(child: logo),
       ),
     );
   }
@@ -260,10 +251,7 @@ class ProviderCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  _confidenceLabel(snapshot.confidence) == null
-                      ? 'atualizado ${relativeTime(snapshot.fetchedAt)}'
-                      : 'conf. ${_confidenceLabel(snapshot.confidence)} · '
-                            '${relativeTime(snapshot.fetchedAt)}',
+                  'atualizado ${relativeTime(snapshot.fetchedAt)}',
                   style: TextStyle(color: palette.dim, fontSize: QdType.micro),
                 ),
               ],
@@ -277,7 +265,7 @@ class ProviderCard extends StatelessWidget {
   List<Widget> _buildGroups(BuildContext context) {
     final palette = QdPalette.of(context);
     final groups = <String?, List<QuotaWindow>>{};
-    for (final window in snapshot.windows) {
+    for (final window in sortWindowsForDisplay(snapshot.windows)) {
       groups.putIfAbsent(window.group, () => []).add(window);
     }
 
@@ -312,13 +300,21 @@ class ProviderCard extends StatelessWidget {
   String? get _creditsLabel {
     final credits = snapshot.credits;
     if (credits == null) return null;
-    final note = credits.note;
-    if (note != null && note.trim().isNotEmpty) return note;
-    if (credits.unlimited) return 'Créditos ilimitados';
-    if (credits.balance != null) {
-      final currency = credits.currency;
-      return 'Saldo: ${credits.balance}${currency == null ? '' : ' $currency'}';
+    final note = credits.note?.trim();
+    final hasNote = note != null && note.isNotEmpty;
+    if (credits.unlimited) {
+      return hasNote ? 'Créditos ilimitados · $note' : 'Créditos ilimitados';
     }
+    final balance = credits.balance;
+    if (balance != null && balance > 0) {
+      final currency = credits.currency;
+      final amount = balance == balance.roundToDouble()
+          ? balance.toStringAsFixed(0)
+          : balance.toStringAsFixed(2);
+      final value = 'Saldo: $amount${currency == null ? '' : ' $currency'}';
+      return hasNote ? '$value · $note' : value;
+    }
+    if (hasNote) return note;
     return null;
   }
 }
@@ -333,8 +329,6 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final plan = snapshot.account.plan;
-    final rawEmail = snapshot.account.maskedEmail ?? '';
-    final email = rawEmail.contains('*') ? rawEmail : shortEmail(rawEmail);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,25 +373,23 @@ class _Header extends StatelessWidget {
                     ),
                 ],
               ),
-              if (email.isNotEmpty)
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: palette.dim, fontSize: QdType.micro),
-                ),
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: StatusBadge(
-            status: snapshot.worstWindow?.status ?? QuotaStatus.unknown,
-            confidence: snapshot.confidence,
-            stale: snapshot.stale,
-            auth: snapshot.errors.any(
-              (error) =>
-                  error.code == 'AUTH_EXPIRED' || error.code == 'AUTH_MISSING',
+        const SizedBox(width: 6),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 110),
+          child: Align(
+            alignment: Alignment.topRight,
+            child: StatusBadge(
+              status: snapshot.worstWindow?.status ?? QuotaStatus.unknown,
+              confidence: snapshot.confidence,
+              stale: snapshot.stale,
+              auth: snapshot.errors.any(
+                (error) =>
+                    error.code == 'AUTH_EXPIRED' ||
+                    error.code == 'AUTH_MISSING',
+              ),
             ),
           ),
         ),
@@ -451,42 +443,21 @@ class _WindowRow extends StatelessWidget {
           height: compact ? 5 : 6,
         ),
         const SizedBox(height: 3),
-        Row(
-          children: [
-            Tooltip(
-              message: reset == null
-                  ? 'Sem reset previsto'
-                  : 'Reset em ${DateFormat('dd/MM/yyyy HH:mm').format(reset.toLocal())}',
-              child: Text(
-                resetLabel,
-                style: TextStyle(color: palette.dim, fontSize: QdType.micro),
-              ),
-            ),
-            const Spacer(),
-            Text(
-              _sourceLabel(window.source),
-              style: TextStyle(color: palette.dim, fontSize: QdType.micro),
-            ),
-          ],
+        Text(
+          resetLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: palette.dim, fontSize: QdType.micro),
         ),
       ],
     );
   }
-
-  static String _sourceLabel(SourceKind source) => switch (source) {
-    SourceKind.api => 'API',
-    SourceKind.rpc => 'RPC local',
-    SourceKind.appServer => 'app-server',
-    SourceKind.cli => 'CLI',
-    SourceKind.headers => 'headers',
-    SourceKind.log => 'histórico local',
-    SourceKind.cache => 'cache',
-  };
 }
 
 String _friendlySource(ProviderSnapshot snapshot) {
   final id = snapshot.sourceId ?? snapshot.source;
   return switch (id) {
+    'claude-desktop-oauth' => 'sessão do Claude Desktop (ao vivo)',
     'claude-desktop-history' => 'histórico local do Claude Desktop (estimado)',
     'claude-oauth-usage' => 'API do Claude Code',
     'opencode-db' => 'banco local do OpenCode',
@@ -497,13 +468,6 @@ String _friendlySource(ProviderSnapshot snapshot) {
     _ => snapshot.source,
   };
 }
-
-String? _confidenceLabel(Confidence confidence) => switch (confidence) {
-  Confidence.high => 'alta',
-  Confidence.medium => 'média',
-  Confidence.low => 'baixa',
-  Confidence.none => null,
-};
 
 class _AuthPanel extends StatelessWidget {
   const _AuthPanel({

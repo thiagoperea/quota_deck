@@ -81,6 +81,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       return;
     }
     final messenger = ScaffoldMessenger.of(context);
+    final warning = widget.state.error;
     await widget.state.refresh();
     if (!mounted) return;
     setState(() {
@@ -88,12 +89,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _initial = _config;
       _allowPop = true;
     });
-    Navigator.of(context).maybePop();
+    Navigator.of(context).pop();
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Configurações salvas'),
+      SnackBar(
+        content: Text(warning ?? 'Configurações salvas'),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+        duration: Duration(seconds: warning == null ? 2 : 5),
       ),
     );
   }
@@ -104,7 +105,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _config = _initial;
       _allowPop = true;
     });
-    if (mounted) Navigator.of(context).maybePop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _confirmDiscard() async {
@@ -231,6 +232,41 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           },
                           keyFor: (value) => Key('settings-theme-$value'),
                           onSelected: _setTheme,
+                        ),
+                        const SizedBox(height: 16),
+                        const _SectionLabel('Sistema'),
+                        Material(
+                          color: palette.panel2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: palette.border),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: SwitchListTile(
+                            key: const Key('settings-launch-at-login'),
+                            value: _config.launchAtLogin,
+                            onChanged: (value) => setState(() {
+                              _config = _config.copyWith(launchAtLogin: value);
+                            }),
+                            title: Text(
+                              'Iniciar com o sistema',
+                              style: TextStyle(
+                                color: palette.text,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Abre direto na bandeja ao entrar no sistema.',
+                              style: TextStyle(
+                                color: palette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(

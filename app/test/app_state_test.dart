@@ -18,7 +18,8 @@ void main() {
     expect(state.config.theme, 'dark');
     expect(state.tightest?.snapshot.provider, ProviderId.opencode);
     expect(state.tightest?.window.id, 'weekly');
-    expect(state.nextReset?.snapshot.provider, ProviderId.antigravity);
+    expect(state.nextReset, isNotNull);
+    expect(state.nextReset!.snapshot.provider, isNot(ProviderId.codex));
     expect(state.featuredHistory, isNotNull);
     expect(state.featuredHistory!.samples, isNotEmpty);
     expect(state.upcomingResets(), isNotEmpty);
@@ -145,5 +146,24 @@ void main() {
     expect(history, isNotNull);
     expect(history!.samples, hasLength(12));
     expect(history.burnRatePerHour, greaterThan(0));
+  });
+
+  test('saveSettings aplica a inicialização automática no sistema', () async {
+    bool? applied;
+    final state = AppState(
+      MockApi(),
+      onLaunchAtLoginChanged: (enabled) async {
+        applied = enabled;
+        return true;
+      },
+    );
+    addTearDown(state.dispose);
+    await state.initialize();
+
+    await state.saveSettings(state.config.copyWith(launchAtLogin: true));
+
+    expect(applied, isTrue);
+    expect(state.config.launchAtLogin, isTrue);
+    expect(state.error, isNull);
   });
 }

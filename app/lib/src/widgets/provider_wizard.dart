@@ -1050,14 +1050,13 @@ _ProviderGuide _guideFor(ProviderId provider) => switch (provider) {
   ),
   ProviderId.claude => const _ProviderGuide(
     summary:
-        'Claude Desktop: histórico local (estimado, sem reset). Claude Code: '
-        'API ao vivo com reset.',
-    command: 'claude',
+        'Sessão do Claude Desktop (app) lida ao vivo: janelas de 5h e 7d. '
+        'Se não houver sessão, usa o histórico local estimado.',
     steps: [
-      'Desktop: mantenha o app aberto para o histórico ser atualizado.',
-      'Ao vivo: rode claude no terminal e faça login (OAuth do Claude Code).',
-      'O CLI também vem embutido no Claude Desktop, em Claude-Data\\...\\claude-code.',
+      'Abra o Claude Desktop e faça login (inclusive na aba Code).',
+      'O QuotaDeck lê a sessão local do app; não precisa do Claude Code CLI.',
+      'Se a sessão expirar, abra o Claude Desktop de novo e use "Já renovei".',
     ],
-    hint: 'Histórico é estimado; API do CLI é a fonte precisa.',
+    hint: 'Funciona sem o CLI: a fonte é a credencial da GUI.',
   ),
 };

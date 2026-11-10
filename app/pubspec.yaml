@@ -1,7 +1,7 @@
 name: quota_deck
 description: "QuotaDeck — painel local-first dos limites de uso dos provedores de IA."
 publish_to: 'none'
-version: 0.5.0+7
+version: 0.6.0+8
 
 environment:
   sdk: ^3.13.7
@@ -17,6 +17,10 @@ dependencies:
   intl: ^0.20.2
   tray_manager: ^0.8.3
   window_manager: ^0.6.0
+  ffi: ^2.2.0
+  flutter_svg: ^2.3.2
+  nativeapi: ^0.5.10
+  nativeapi_flutter: ^0.5.10
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -26,3 +30,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/tray/
+    - assets/providers/

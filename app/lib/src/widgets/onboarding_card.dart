@@ -106,9 +106,7 @@ class OnboardingCard extends StatelessWidget {
             _Step(
               number: '4',
               provider: ProviderId.claude,
-              instruction:
-                  'Faça login no Claude Code para renovar o token OAuth.',
-              command: 'claude',
+              instruction: 'Faça login no Claude Desktop; o QuotaDeck lê a sessão do app.',
             ),
             const SizedBox(height: 12),
             Container(

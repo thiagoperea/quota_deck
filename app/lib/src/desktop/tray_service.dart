@@ -11,6 +11,7 @@ import 'package:window_manager/legacy.dart';
 import '../app.dart';
 import '../state/app_state.dart';
 import '../widgets/settings_sheet.dart';
+import 'window_mode.dart';
 
 /// Bandeja do sistema + janela compacta.
 ///
@@ -48,8 +49,8 @@ class TrayService with TrayListener, WindowListener {
     await trayManager.setContextMenu(
       Menu(
         items: [
-          MenuItem(key: 'show', label: 'Abrir QuotaDeck'),
-          MenuItem(key: 'dashboard', label: 'Dashboard'),
+          MenuItem(key: 'show', label: 'Abrir mini'),
+          MenuItem(key: 'dashboard', label: 'Dashboard completo'),
           MenuItem(key: 'settings', label: 'Configurações…'),
           MenuItem(key: 'refresh', label: 'Atualizar agora'),
           MenuItem.separator(),
@@ -69,7 +70,7 @@ class TrayService with TrayListener, WindowListener {
       final reset = quota.window.resetsAt == null
           ? ''
           : ' · reset ${relativeTime(quota.window.resetsAt!)}';
-      text = 'QuotaDeck · $provider ${used}% usado$reset';
+      text = 'QuotaDeck · $provider $used% usado$reset';
     }
     try {
       await trayManager.setToolTip(text);
@@ -94,7 +95,7 @@ class TrayService with TrayListener, WindowListener {
   void onTrayMenuItemClick(MenuItem menuItem) {
     switch (menuItem.key) {
       case 'show':
-        unawaited(_showCompact());
+        unawaited(_showMini());
       case 'dashboard':
         unawaited(_showDashboard());
       case 'settings':
@@ -118,33 +119,24 @@ class TrayService with TrayListener, WindowListener {
       state.setWindowActive(false);
       await windowManager.hide();
     } else {
-      await _showCompact();
+      await _showMini();
     }
   }
 
-  Future<void> _showCompact() async {
-    state.setWindowActive(true);
-    await windowManager.setSize(const Size(420, 760));
-    await windowManager.center();
-    await windowManager.show();
-    await windowManager.focus();
+  Future<void> _showMini() async {
+    await openMiniWindow(state);
   }
 
   Future<void> _showDashboard() async {
-    state.setWindowActive(true);
-    await windowManager.setSize(const Size(1100, 800));
-    await windowManager.center();
-    await windowManager.show();
-    await windowManager.focus();
+    await openDashboardWindow(state);
   }
 
   Future<void> _showSettings() async {
-    state.setWindowActive(true);
-    await windowManager.show();
-    await windowManager.focus();
+    await openDashboardWindow(state);
     await Future<void>.delayed(const Duration(milliseconds: 120));
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
+      // ignore: use_build_context_synchronously
       await showSettingsSheet(context);
     }
   }
