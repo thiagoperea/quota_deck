@@ -149,9 +149,9 @@ void main() {
     expect(snapshot.windows[1].usedPercent, 17);
     expect(snapshot.windows[0].resetsAt, isNull);
     expect(
-      snapshot.errors.map((e) => e.code),
-      contains('AUTH_MISSING'),
-      reason: 'o fallback precisa carregar o erro original do CLI',
+      snapshot.errors,
+      isEmpty,
+      reason: 'histórico do Desktop não deve pedir login na CLI',
     );
     expect(snapshot.stale, isFalse);
   });

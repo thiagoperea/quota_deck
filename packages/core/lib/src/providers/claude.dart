@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../claude_desktop_auth.dart';
 import '../errors.dart';
 import '../paths.dart';
 import '../provider.dart';
@@ -16,6 +17,7 @@ class ClaudeProvider implements ProviderAdapter {
 
   static const _srcCli = 'claude-oauth-usage';
   static const _srcDesktop = 'claude-desktop-history';
+  static const _srcDesktopOauth = 'claude-desktop-oauth';
 
   @override
   Future<DetectionResult> detect(ProviderContext ctx) async {
@@ -62,6 +64,7 @@ class ClaudeProvider implements ProviderAdapter {
   Future<SurfaceState> _probeDesktop(ProviderContext ctx) async {
     final dirs = AppPaths.claudeDesktopDirs(env: ctx.env);
     final historyFile = await _newestUsageFile(ctx);
+    final token = await readClaudeDesktopToken(ctx);
     String? installedDir;
     for (final dir in dirs) {
       if (dir.existsSync()) {
@@ -73,82 +76,117 @@ class ClaudeProvider implements ProviderAdapter {
     final usage = historyFile == null
         ? null
         : await _readDesktopUsage(historyFile);
+    final authenticated = token != null || usage != null;
     return SurfaceState(
       surface: ProviderSurface.desktop,
       installed: installedDir != null || running || usage != null,
-      authenticated: usage != null,
-      live: false,
+      authenticated: authenticated,
+      live: token != null,
       location: historyFile == null
           ? installedDir
           : AppPaths.maskPath(historyFile.path, env: ctx.env),
       account: null,
-      reason: usage == null
+      reason: token != null
+          ? 'Sessão do Claude Desktop (app) encontrada; leitura ao vivo.'
+          : usage == null
           ? 'Claude Desktop detectado, sem histórico de uso legível.'
           : 'Histórico local do Claude Desktop (estimado, atualiza com o app aberto).',
-      action: usage == null
-          ? null
-          : 'Para dados ao vivo com reset, faça login no Claude Code.',
+      action: authenticated ? null : 'Abra o Claude Desktop e faça login; o QuotaDeck lê a sessão do app.',
     );
   }
 
   @override
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
+    var firstError = QdeckException(
+      code: QdeckErrorCode.authMissing,
+      provider: id,
+      message: 'Claude sem sessão legível.',
+    );
+
+    // 1. Sessão da CLI, quando existir e estiver válida.
     try {
-      return await _readCli(ctx);
+      final creds = await _readCredentials(ctx);
+      if (creds == null || creds.accessToken.isEmpty) {
+        firstError = QdeckException(
+          code: QdeckErrorCode.authMissing,
+          provider: id,
+          message: 'Claude Code sem credencial utilizável.',
+        );
+      } else if (creds.expiresAt != null &&
+          creds.expiresAt!.isBefore(ctx.now())) {
+        firstError = QdeckException(
+          code: QdeckErrorCode.authExpired,
+          provider: id,
+          message: 'Token do Claude Code expirado.',
+          details: {'expiresAt': formatDate(creds.expiresAt)},
+        );
+      } else {
+        return await _fetchUsage(
+          ctx,
+          accessToken: creds.accessToken,
+          accountLabel: 'Claude Code',
+          plan: creds.subscriptionType,
+          surface: ProviderSurface.cli,
+          source: _srcCli,
+        );
+      }
     } on QdeckException catch (error) {
-      if (error.code != QdeckErrorCode.authMissing &&
-          error.code != QdeckErrorCode.authExpired) {
-        rethrow;
-      }
-      final desktop = await _readDesktop(ctx);
-      if (desktop != null) {
-        return desktop.copyWith(errors: [error.toInfo()]);
-      }
-      if (error.code == QdeckErrorCode.authExpired) rethrow;
-      final installed =
-          await _findCliBinary(ctx) != null ||
-          AppPaths.claudeDesktopDirs(env: ctx.env).any((d) => d.existsSync());
-      throw QdeckException(
-        code: installed ? error.code : QdeckErrorCode.notInstalled,
-        provider: id,
-        message: installed
-            ? '${error.message} Nenhum histórico local do Claude Desktop foi encontrado.'
-            : 'Claude não encontrado (nem Claude Code nem Claude Desktop).',
-        details: {
-          ...?error.details,
-          'surfaces': ['cli', 'desktop'],
-        },
-      );
+      firstError = error;
     }
+
+    // 2. Sessão OAuth do Claude Desktop (GUI). Mesma API, token do app.
+    final desktopToken = await readClaudeDesktopToken(ctx);
+    if (desktopToken != null) {
+      try {
+        return await _fetchUsage(
+          ctx,
+          accessToken: desktopToken.accessToken,
+          accountLabel: 'Claude Desktop',
+          plan: desktopToken.subscriptionType,
+          surface: ProviderSurface.desktop,
+          source: _srcDesktopOauth,
+        );
+      } on QdeckException catch (error) {
+        firstError = error;
+      }
+    }
+
+    // 3. Histórico local do Desktop: estimado, mas melhor que nada.
+    final desktop = await _readDesktop(ctx);
+    if (desktop != null) return desktop;
+
+    final installed =
+        await _findCliBinary(ctx) != null ||
+        await AppPaths.claudeCredentials(env: ctx.env).exists() ||
+        AppPaths.claudeDesktopDirs(env: ctx.env).any((d) => d.existsSync());
+    throw QdeckException(
+      code: installed ? firstError.code : QdeckErrorCode.notInstalled,
+      provider: id,
+      message: installed
+          ? 'Claude encontrado, mas sem sessão legível. Abra o Claude Desktop e '
+                'faça login; o QuotaDeck lê a sessão do app (o CLI é opcional).'
+          : 'Claude não encontrado (nem Claude Desktop nem Claude Code).',
+      details: {
+        ...?firstError.details,
+        'surfaces': ['desktop', 'cli'],
+      },
+    );
   }
 
-  Future<ProviderSnapshot> _readCli(ProviderContext ctx) async {
-    final creds = await _readCredentials(ctx);
-    if (creds == null || creds.accessToken.isEmpty) {
-      throw QdeckException(
-        code: QdeckErrorCode.authMissing,
-        provider: id,
-        message:
-            'Claude sem credencial utilizável. Faça login no Claude Code '
-            '(CLI) para leitura ao vivo.',
-      );
-    }
-    final expiresAt = creds.expiresAt;
-    if (expiresAt != null && expiresAt.isBefore(ctx.now())) {
-      throw QdeckException(
-        code: QdeckErrorCode.authExpired,
-        provider: id,
-        message:
-            'Token do Claude Code expirado. Abra o Claude Code para renovar.',
-        details: {'expiresAt': formatDate(expiresAt)},
-      );
-    }
-
+  /// Consulta o endpoint OAuth de uso com um token já validado.
+  Future<ProviderSnapshot> _fetchUsage(
+    ProviderContext ctx, {
+    required String accessToken,
+    required String accountLabel,
+    required ProviderSurface surface,
+    required String source,
+    String? plan,
+  }) async {
     final response = await ctx.http
         .get(
           Uri.parse('https://api.anthropic.com/api/oauth/usage'),
           headers: {
-            'Authorization': 'Bearer ${creds.accessToken}',
+            'Authorization': 'Bearer $accessToken',
             'anthropic-beta': 'oauth-2025-04-20',
             'Accept': 'application/json',
           },
@@ -159,21 +197,21 @@ class ClaudeProvider implements ProviderAdapter {
       throw QdeckException(
         code: QdeckErrorCode.authExpired,
         provider: id,
-        message: 'Claude Code retornou 401. Abra o Claude Code para renovar.',
+        message: 'Sessão do $accountLabel expirou. Abra o app e faça login.',
       );
     }
     if (response.statusCode == 429) {
       throw QdeckException(
         code: QdeckErrorCode.rateLimited,
         provider: id,
-        message: 'Rate limit no endpoint de uso do Claude Code.',
+        message: 'Rate limit no endpoint de uso do $accountLabel.',
       );
     }
     if (response.statusCode != 200) {
       throw QdeckException(
         code: QdeckErrorCode.network,
         provider: id,
-        message: 'Claude Code respondeu HTTP ${response.statusCode}.',
+        message: '$accountLabel respondeu HTTP ${response.statusCode}.',
       );
     }
 
@@ -182,7 +220,7 @@ class ClaudeProvider implements ProviderAdapter {
       throw QdeckException(
         code: QdeckErrorCode.schemaChanged,
         provider: id,
-        message: 'Resposta do Claude Code não é um objeto JSON.',
+        message: 'Resposta do $accountLabel não é um objeto JSON.',
       );
     }
 
@@ -220,7 +258,7 @@ class ClaudeProvider implements ProviderAdapter {
       throw QdeckException(
         code: QdeckErrorCode.schemaChanged,
         provider: id,
-        message: 'Claude Code respondeu sem janelas conhecidas.',
+        message: '$accountLabel respondeu sem janelas conhecidas.',
       );
     }
 
@@ -241,12 +279,12 @@ class ClaudeProvider implements ProviderAdapter {
 
     return ProviderSnapshot(
       provider: id,
-      account: AccountInfo(label: 'Claude Code', plan: creds.subscriptionType),
+      account: AccountInfo(label: accountLabel, plan: plan),
       windows: windows,
       credits: credits,
-      source: _srcCli,
-      sourceId: _srcCli,
-      surface: ProviderSurface.cli,
+      source: source,
+      sourceId: source,
+      surface: surface,
       fetchedAt: ctx.now(),
       confidence: Confidence.high,
     );
@@ -337,6 +375,19 @@ class ClaudeProvider implements ProviderAdapter {
 
     final history = await _newestUsageFile(ctx);
     final usage = history == null ? null : await _readDesktopUsage(history);
+    final desktopToken = await readClaudeDesktopToken(ctx);
+    checks.add(
+      DoctorCheck(
+        provider: id,
+        id: 'desktop-oauth',
+        label: 'Claude Desktop (sessão do app)',
+        status: desktopToken == null ? DoctorStatus.warn : DoctorStatus.ok,
+        message: desktopToken == null
+            ? 'Token da GUI não encontrado/decifrável.'
+            : 'accessToken presente; plano=${desktopToken.subscriptionType ?? 'n/a'}; '
+                  'expira em ${formatDate(desktopToken.expiresAt) ?? 'n/a'}.',
+      ),
+    );
     checks.add(
       DoctorCheck(
         provider: id,

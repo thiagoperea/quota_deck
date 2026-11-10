@@ -1,7 +1,7 @@
 # Provider: Claude Code (Anthropic)
 
-**Status:** schema e tratamento implementados; token local expirado em 08/11/2026 (HTTP 401).
-**Confiança:** alta no endpoint OAuth; média em headers passivos.
+**Status:** CLI, Claude Desktop/GUI (safeStorage) e histórico implementados.
+**Confiança:** alta no endpoint OAuth; alta no token cache do Electron (validado no Windows).
 **Custo de quota:** zero no endpoint de uso; probe mínima só com opt-in.
 
 ---
@@ -44,6 +44,65 @@ O valor é JSON:
 Mesma estrutura `claudeAiOauth`.
 
 Com `CLAUDE_CONFIG_DIR` customizado, o serviço do Keychain vira `Claude Code-credentials-<hash>` e o arquivo fica em `<CLAUDE_CONFIG_DIR>/.credentials.json`. Buscar pelo serviço (sem account fixo) é mais robusto.
+
+---
+
+## 1.1 Claude Desktop / GUI (sem CLI)
+
+O app Claude Desktop (incluindo a aba **Code**) guarda a sessão OAuth dele em
+`config.json` do Electron, não em `~/.claude/.credentials.json`:
+
+```text
+Windows: %LOCALAPPDATA%\Claude-Data\claude_<hash>\config.json
+macOS:   ~/Library/Application Support/Claude/config.json
+```
+
+Chaves relevantes:
+
+```json
+{
+  "oauth:tokenCacheV2": "<base64 do safeStorage>",
+  "oauth:tokenCache": "<base64 do safeStorage (formato antigo)>",
+  "lastKnownAccountUuid": "<uuid>"
+}
+```
+
+Depois de decifrar, o conteúdo é um mapa cuja chave termina com os escopos:
+
+```text
+acct:<uuid>|<client-id>:<org>:https://api.anthropic.com:user:inference user:file_upload user:profile user:sessions:claude_code
+```
+
+O valor tem `token`, `refreshToken`, `expiresAt` (ms), `subscriptionType` e
+`rateLimitTier`. O QuotaDeck escolhe a entrada com `user:inference`, prefere a
+que tem `user:sessions:claude_code` e descarta tokens expirados.
+
+### Como decifrar
+
+O Electron usa `safeStorage`:
+
+- **Windows:** `Local State` → `os_crypt.encrypted_key` (base64 com prefixo
+  `DPAPI`) → `CryptUnprotectData` → chave AES-256. O blob do token tem
+  `"v10" || nonce(12) || ciphertext || tag(16)` e é AES-256-GCM.
+- **macOS:** senha no Keychain `Claude Safe Storage`; chave via
+  PBKDF2-HMAC-SHA1 (`saltysalt`, 1003 iterações, 128 bits); blob
+  `"v10" || ciphertext` em AES-128-CBC com IV de 16 espaços.
+- **Linux:** `basic_text`/libsecret não é suportado pelo QuotaDeck; usa-se o
+  histórico local.
+
+O QuotaDeck só lê e decifra em memória. Não renova, não escreve e não persiste
+o token — renovar poderia rotacionar o refresh token e deslogar o app.
+
+Depois de obter o token, a consulta é a mesma da CLI:
+
+```http
+GET https://api.anthropic.com/api/oauth/usage
+Authorization: Bearer <token da GUI>
+anthropic-beta: oauth-2025-04-20
+```
+
+Isso devolve dados ao vivo (5h/7d) sem exigir o Claude Code CLI. Se o token da
+GUI estiver expirado, o app cai para `plan-usage-history.json` (estimado).
 
 ---
 
@@ -137,8 +196,9 @@ Resposta esperada (schema observado, não oficial):
 
 1. Ler `expiresAt`.
 2. Se `expiresAt < now`, retornar `AUTH_EXPIRED` **sem chamar a rede**.
-3. Mensagem: “Token do Claude expirado; abra o Claude Code para renovar.”
-4. Usar cache stale se existir.
+3. Mensagem: “Sessão do Claude expirou; abra o Claude Desktop (ou o Claude Code) para renovar.”
+4. Usar histórico local do Desktop se existir.
+5. Nunca pedir login na CLI quando a sessão da GUI existe.
 
 ### Por que não renovar automaticamente
 
