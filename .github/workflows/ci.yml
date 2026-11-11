@@ -1,5 +1,10 @@
 name: ci
 
+env:
+  # Pinado de propósito: nativeapi 0.5.10 (última) usa Isolate.create, que não
+  # existe no Flutter 3.50+. Suba a versão junto com o nativeapi.
+  FLUTTER_VERSION: 3.47.9
+
 on:
   push:
     branches: [main]
@@ -28,7 +33,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Linux deps
@@ -136,7 +141,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: (cd app && flutter pub get && flutter build macos --release)
       - name: Package .app
@@ -159,7 +164,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: cd app; flutter pub get; flutter build windows --release
       - name: Derive version
@@ -204,7 +209,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - name: Linux deps
         run: |
