@@ -5,6 +5,10 @@
 | Ferramenta | Uso |
 |---|---|
 | Flutter 3.47+ / Dart 3.13+ | app, core e CLI |
+
+> O CI fixa **Flutter 3.47.9** (`FLUTTER_VERSION` em `.github/workflows/ci.yml`).
+> O `nativeapi 0.5.10` (última publicada) usa `Isolate.create`, que não existe
+> no Flutter 3.50+. Ao subir o Flutter, atualize o `nativeapi` primeiro.
 | Xcode 27+ | build macOS (macOS 26.6+, Apple Silicon) |
 | Visual Studio Desktop C++ | build Windows |
 | GTK 3, X11, Xi, libnotify, CMake, Ninja, Clang | build Linux |
