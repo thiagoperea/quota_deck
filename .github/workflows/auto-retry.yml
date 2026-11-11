@@ -1,0 +1,118 @@
+name: auto-retry
+
+# Reexecuta uma única vez runs do ci que falharam porque um job foi
+# cancelado pelo runner sem chegar a executar nenhum step (capacidade de
+# runner macOS arm64, por exemplo). Falha de teste/build de verdade nunca
+# é reexecutada.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: auto-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+env:
+  # Debounce alto de propósito: a capacidade de runner costuma voltar em
+  # dezenas de minutos e um retry imediato só gasta minutos de Actions.
+  # Sobrescreva com a variable do repositório AUTO_RETRY_DEBOUNCE_SECONDS.
+  DEBOUNCE_SECONDS: ${{ vars.AUTO_RETRY_DEBOUNCE_SECONDS || '1800' }}
+
+jobs:
+  retry:
+    name: reexecutar cancelamento de infraestrutura
+    if: |
+      github.event.workflow_run.event != 'pull_request' &&
+      github.event.workflow_run.run_attempt == 1 &&
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Triagem (cancelado sem executar steps = infra)
+        id: triage
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              { owner, repo, run_id: run.id, per_page: 100 },
+            );
+
+            const failed = jobs.filter((job) => job.conclusion === 'failure');
+            const cancelled = jobs.filter((job) => job.conclusion === 'cancelled');
+            const neverStarted = cancelled.filter((job) => {
+              const steps = job.steps ?? [];
+              return (
+                steps.length === 0 ||
+                steps.every(
+                  (step) => !step.conclusion || step.conclusion === 'skipped',
+                )
+              );
+            });
+
+            // Um push novo cancela o run anterior por concorrência: não vale
+            // reexecutar um commit que já não é o head do ref.
+            let isCurrent = false;
+            try {
+              const ref = await github.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: run.head_branch,
+              });
+              isCurrent = ref.data.sha === run.head_sha;
+            } catch (error) {
+              core.info(`ref ${run.head_branch} indisponivel: ${error.message}`);
+            }
+
+            for (const job of jobs) {
+              core.info(
+                `- ${job.name}: ${job.conclusion} (steps=${(job.steps ?? []).length})`,
+              );
+            }
+
+            const retry =
+              failed.length === 0 && neverStarted.length > 0 && isCurrent;
+            const reason = retry
+              ? `${neverStarted.length} job(s) cancelado(s) sem executar step; nenhuma falha real`
+              : `nao reexecuta (falhas=${failed.length}, cancelados-sem-step=${neverStarted.length}, ref-atual=${isCurrent})`;
+
+            core.info(reason);
+            core.setOutput('retry', retry ? 'true' : 'false');
+            core.setOutput('reason', reason);
+            await core.summary
+              .addHeading('auto-retry', 3)
+              .addRaw(
+                `run [#${run.run_number}](${run.html_url}) — ${reason}`,
+              )
+              .write();
+
+      - name: Debounce antes de reexecutar
+        if: steps.triage.outputs.retry == 'true'
+        run: |
+          echo "Aguardando ${DEBOUNCE_SECONDS}s antes de reexecutar (debounce)."
+          sleep "${DEBOUNCE_SECONDS}"
+          echo "Janela de debounce encerrada."
+
+      - name: Reexecutar jobs que falharam
+        if: steps.triage.outputs.retry == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        with:
+          script: |
+            await github.rest.actions.reRunWorkflowFailedJobs({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: Number(process.env.RUN_ID),
+            });
+            core.info(`reexecucao solicitada para o run ${process.env.RUN_ID}`);

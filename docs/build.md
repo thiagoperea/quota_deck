@@ -69,6 +69,18 @@ Saídas:
 
 O CI em `.github/workflows/ci.yml` gera os três artifacts.
 
+### Auto-retry de infraestrutura
+
+`.github/workflows/auto-retry.yml` observa o fim de cada run do `ci`. Se o run
+falhou **sem nenhuma falha real** — só com job cancelado que não chegou a
+executar step (capacidade de runner macOS arm64, por exemplo) — ele reexecuta
+os jobs que falharam, uma única vez.
+
+- Debounce padrão de **30 min** antes de reexecutar; ajuste com a variable
+  `AUTO_RETRY_DEBOUNCE_SECONDS` do repositório.
+- Não reexecuta pull request, commit que já não é o head do ref, run de
+  tentativa 2+ nem qualquer run com job `failure` de verdade.
+
 ## CLI
 
 Instalação local:
