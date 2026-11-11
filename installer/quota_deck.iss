@@ -1,5 +1,5 @@
 ; Instalador Windows do QuotaDeck (Inno Setup 6+).
-; Uso: iscc /DMyAppVersion=0.6.0 /DSourceDir=<...>\Release installer\quota_deck.iss
+; Uso: iscc /DMyAppVersion=0.7.0 /DSourceDir=<...>\Release installer\quota_deck.iss
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -60,3 +60,5 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Abrir {#MyAppName}"; Flags: now
 [UninstallDelete]
 ; Mantém config/cache/histórico em %APPDATA%\QuotaDeck por padrão.
 Type: filesandordirs; Name: "{app}"
+; Atalho criado pelo local_notifier para habilitar toasts no Windows.
+Type: files; Name: "{userprograms}\QuotaDeck.lnk"

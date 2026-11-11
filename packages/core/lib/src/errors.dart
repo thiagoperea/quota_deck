@@ -61,3 +61,35 @@ class QdeckException implements Exception {
   @override
   String toString() => '${code.wireName}: $message';
 }
+
+/// `Retry-After` em segundos, aceitando também uma data HTTP (RFC 7231).
+int? retryAfterSecondsFromHeaders(Map<String, String> headers) {
+  String? raw;
+  for (final entry in headers.entries) {
+    if (entry.key.toLowerCase() == 'retry-after') {
+      raw = entry.value;
+      break;
+    }
+  }
+  if (raw == null) return null;
+  final trimmed = raw.trim();
+  final seconds = int.tryParse(trimmed);
+  if (seconds != null) return seconds < 0 ? 0 : seconds;
+  final date = DateTime.tryParse(trimmed);
+  if (date == null) return null;
+  final diff = date.toUtc().difference(DateTime.now().toUtc()).inSeconds;
+  return diff < 0 ? 0 : diff;
+}
+
+/// Detalhes padronizados para erros 429 consumidos pelo backoff do core.
+Map<String, dynamic>? rateLimitDetails(Map<String, String> headers) {
+  final seconds = retryAfterSecondsFromHeaders(headers);
+  if (seconds == null) return null;
+  return {
+    'retryAfterSeconds': seconds,
+    'retryAt': DateTime.now()
+        .toUtc()
+        .add(Duration(seconds: seconds))
+        .toIso8601String(),
+  };
+}

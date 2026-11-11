@@ -280,7 +280,7 @@ Refresh via `https://oauth2.googleapis.com/token` com `grant_type=refresh_token`
 ## 7. Testes
 
 - Fixture real (3 grupos, 5 buckets).
-- Mock do hub + servidor Connect local.
+- Hub simulado + servidor Connect local.
 - Teste de `remainingFraction` 0, 0.5, 1.
 - Teste de `remaining` aninhado/oneof e `disabled`.
 - Teste de grupo sem buckets.

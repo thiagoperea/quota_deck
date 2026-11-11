@@ -125,8 +125,10 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   Future<void> _verify(ProviderId provider) async {
     if (_checking.contains(provider)) return;
     setState(() => _checking.add(provider));
+    // `redetect` força a varredura; `detectProviders` devolveria o cache e o
+    // usuário veria "conectado" sem nada ter sido verificado.
     await Future.wait([
-      widget.state.detectProviders(),
+      widget.state.redetect(),
       widget.state.refresh(provider: provider),
     ]);
     if (!mounted) return;
@@ -183,10 +185,36 @@ class _ProviderWizardState extends State<_ProviderWizard> {
     setState(() => _index -= 1);
   }
 
+  bool get _dirty => ProviderId.values.any(
+    (provider) => _isEnabled(provider) != widget.state.config.isEnabled(provider),
+  );
+
   Future<void> _close() async {
-    if (widget.firstRun) {
-      await _finish();
-      return;
+    if (_saving) return;
+    if (_dirty) {
+      final palette = QdPalette.of(context);
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Descartar ajustes?'),
+          content: const Text(
+            'Os provedores ligados ou desligados aqui não serão salvos.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Continuar'),
+            ),
+            TextButton(
+              key: const Key('wizard-discard'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: palette.red),
+              child: const Text('Descartar'),
+            ),
+          ],
+        ),
+      );
+      if (discard != true || !mounted) return;
     }
     Navigator.of(context).maybePop();
   }
@@ -220,6 +248,33 @@ class _ProviderWizardState extends State<_ProviderWizard> {
             children: [
               _header(palette),
               _progress(palette),
+              if (widget.state.detecting)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: palette.green,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          'Procurando apps e credenciais instalados…',
+                          key: const Key('wizard-detecting'),
+                          style: TextStyle(
+                            color: palette.muted,
+                            fontSize: QdType.micro,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
@@ -462,7 +517,9 @@ class _ProviderWizardState extends State<_ProviderWizard> {
           children: [
             OutlinedButton.icon(
               key: Key('wizard-verify-${provider.name}'),
-              onPressed: checking ? null : () => unawaited(_verify(provider)),
+              onPressed: checking || widget.state.detecting
+                  ? null
+                  : () => unawaited(_verify(provider)),
               icon: checking
                   ? SizedBox(
                       width: 12,
@@ -527,70 +584,93 @@ class _ProviderWizardState extends State<_ProviderWizard> {
       for (final provider in ProviderId.values)
         if (!_steps.contains(provider)) provider,
     ];
+    // Pendências contam só entre os provedores que ficam no painel.
+    final pending = [
+      for (final provider in ProviderId.values)
+        if (_isEnabled(provider) &&
+            (_statusFor(provider) == _ProviderStatus.signInNeeded ||
+                _statusFor(provider) == _ProviderStatus.notDetected))
+          provider,
+    ];
+    final ordered = [
+      ...pending,
+      for (final provider in ProviderId.values)
+        if (!pending.contains(provider)) provider,
+    ];
+    final title = nothingDetected
+        ? 'Nenhuma ferramenta detectada'
+        : pending.isEmpty
+        ? 'Tudo pronto'
+        : 'Falta conectar ${pending.length} '
+              '${pending.length == 1 ? 'provedor' : 'provedores'}';
+    final subtitle = nothingDetected
+        ? 'Abra o app ou rode o CLI de um provedor e use "Verificar de novo". '
+              'Você também pode habilitar manualmente abaixo.'
+        : pending.isNotEmpty
+        ? 'Os pendentes estão no topo. Abra a ferramenta, faça login e use '
+              '"Verificar de novo".'
+        : enabled.isEmpty
+        ? 'Nenhum provedor ativo. Você pode ativar depois nas configurações.'
+        : '${enabled.length} de ${ProviderId.values.length} provedores '
+              'aparecem no painel.';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          nothingDetected ? 'Nenhuma ferramenta detectada' : 'Tudo pronto',
+          title,
           style: TextStyle(
-            color: palette.text,
+            color: pending.isNotEmpty ? palette.yellow : palette.text,
             fontSize: 15,
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 4),
         Text(
-          nothingDetected
-              ? 'Abra o app ou rode o CLI de um provedor e use "Verificar de novo". '
-                    'Você também pode habilitar manualmente abaixo.'
-              : enabled.isEmpty
-              ? 'Nenhum provedor ativo. Você pode ativar depois nas configurações.'
-              : '${enabled.length} de ${ProviderId.values.length} provedores aparecem no painel.',
+          subtitle,
           style: TextStyle(color: palette.muted, fontSize: 11, height: 1.45),
         ),
-        if (nothingDetected) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            key: const Key('wizard-redetect'),
-            onPressed: widget.state.detecting
-                ? null
-                : () async {
-                    await widget.state.detectProviders();
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-            icon: widget.state.detecting
-                ? SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: palette.green,
-                    ),
-                  )
-                : const Icon(Icons.refresh, size: 14),
-            label: const Text('Verificar de novo'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: palette.text,
-              side: BorderSide(color: palette.border),
-              minimumSize: const Size(0, 36),
-              textStyle: const TextStyle(fontSize: QdType.small),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(9),
-              ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const Key('wizard-redetect'),
+          onPressed: widget.state.detecting
+              ? null
+              : () async {
+                  await widget.state.redetect();
+                  if (!mounted) return;
+                  setState(() {});
+                },
+          icon: widget.state.detecting
+              ? SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.green,
+                  ),
+                )
+              : const Icon(Icons.refresh, size: 14),
+          label: const Text('Verificar de novo'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: palette.text,
+            side: BorderSide(color: palette.border),
+            minimumSize: const Size(0, 36),
+            textStyle: const TextStyle(fontSize: QdType.small),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(9),
             ),
           ),
-        ],
+        ),
         const SizedBox(height: 12),
-        for (final provider in ProviderId.values) ...[
+        for (var i = 0; i < ordered.length; i++) ...[
           _SummaryRow(
-            provider: provider,
-            enabled: _isEnabled(provider),
-            status: _statusFor(provider),
-            detection: widget.state.detectionFor(provider),
-            onChanged: (value) => _setEnabled(provider, value),
+            provider: ordered[i],
+            enabled: _isEnabled(ordered[i]),
+            status: _statusFor(ordered[i]),
+            detection: widget.state.detectionFor(ordered[i]),
+            onChanged: (value) => _setEnabled(ordered[i], value),
           ),
-          if (provider != ProviderId.values.last) const SizedBox(height: 8),
+          if (i < ordered.length - 1) const SizedBox(height: 8),
         ],
         if (hidden.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -666,12 +746,12 @@ class _ProviderWizardState extends State<_ProviderWizard> {
           else
             TextButton(
               key: const Key('wizard-skip'),
-              onPressed: _saving ? null : () => unawaited(_finish()),
+              onPressed: _saving ? null : () => unawaited(_close()),
               style: TextButton.styleFrom(
                 foregroundColor: palette.dim,
-                textStyle: const TextStyle(fontSize: 11),
+                textStyle: const TextStyle(fontSize: QdType.small),
               ),
-              child: const Text('Pular'),
+              child: const Text('Concluir depois'),
             ),
           const Spacer(),
           FilledButton(

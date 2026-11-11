@@ -80,9 +80,37 @@ Detalhes em [`providers/`](providers/).
 - Burn rate por regressão linear; ETA = `(100 - usado) / burnRate`.
 - Retenção de 30 dias.
 
+### Backoff de 429
+
+O próprio `cache.json` guarda `backoff: {provider: até}`. Quando um adapter
+devolve `RATE_LIMITED`, o serviço grava 5 min (ou o `Retry-After` do endpoint) e
+as próximas leituras devolvem o último snapshot bom marcado como `stale`, sem
+chamar a rede. Refresh manual também respeita o bloqueio.
+
+## Notificações
+
+- `NotificationPolicy` decide o que notificar: um aviso por travessia, histerese
+  de 5 pontos e re-arme quando o `resetsAt` muda mais de 90 min.
+- `LocalNotificationService` entrega via `local_notifier` (Windows/macOS/Linux).
+- Estado de dedupe em `notifications.json` no diretório de dados.
+- Com a janela oculta, o timer continua rodando em intervalos de 5 min apenas
+  quando as notificações estão ligadas.
+
+## Personalização
+
+`AppConfig` guarda `providerOrder` e `windowVisibility` (`provider|windowId` →
+`always` / `onDemand` / `hidden`). O dashboard e o mini filtram as janelas; o
+core continua consultando todas, inclusive as ocultas.
+
+## Atualização
+
+`UpdateService` consulta `releases/latest` no GitHub no start e a cada 24 h,
+compara SemVer com `appVersion` e expõe um banner com link para a release. Não
+baixa nem executa nada; pode ser desligado por `checkUpdates`.
+
 ## Erros
 
-Cada provider pode falhar sem derrubar os outros. Os erros são tipados (`AUTH_MISSING`, `AUTH_EXPIRED`, `NETWORK`, `RATE_LIMITED`, `SCHEMA_CHANGED`, `PROVIDER_NOT_RUNNING`) e aparecem no card com uma ação (“Abrir Claude Code”, “Tentar novamente” etc.).
+Cada provider pode falhar sem derrubar os outros. Os erros são tipados (`AUTH_MISSING`, `AUTH_EXPIRED`, `NETWORK`, `RATE_LIMITED`, `SCHEMA_CHANGED`, `PROVIDER_NOT_RUNNING`) e aparecem no card com uma ação (“Abrir Claude Code”, “Tentar novamente” etc.). Em `RATE_LIMITED`, o card mostra a contagem até a próxima tentativa e esconde o botão “Tentar”.
 
 ## Decisões
 

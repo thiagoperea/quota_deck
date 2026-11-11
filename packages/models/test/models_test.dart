@@ -104,11 +104,34 @@ void main() {
         refreshSeconds: 120,
         warningThreshold: 75,
         theme: 'light',
+        providerOrder: ['claude', 'codex'],
+        windowVisibility: {
+          'claude|five_hour': WindowVisibility.onDemand,
+          'claude|seven_day': WindowVisibility.hidden,
+        },
+        checkUpdates: false,
       );
       final decoded = AppConfig.fromJson(config.toJson());
       expect(decoded.refreshSeconds, 120);
       expect(decoded.warningThreshold, 75);
       expect(decoded.theme, 'light');
+      expect(decoded.providerOrder, ['claude', 'codex']);
+      expect(
+        decoded.visibilityFor(ProviderId.claude, 'five_hour'),
+        WindowVisibility.onDemand,
+      );
+      expect(
+        decoded.visibilityFor(ProviderId.claude, 'seven_day'),
+        WindowVisibility.hidden,
+      );
+      expect(
+        decoded.visibilityFor(ProviderId.claude, 'outra'),
+        WindowVisibility.always,
+      );
+      expect(decoded.providerRank(ProviderId.claude), 0);
+      expect(decoded.providerRank(ProviderId.codex), 1);
+      expect(decoded.providerRank(ProviderId.opencode), 999);
+      expect(decoded.checkUpdates, isFalse);
     });
   });
 
@@ -198,6 +221,17 @@ void main() {
       expect(out, contains('"access_token":"<redacted>"'));
       expect(out, contains('"refreshToken":"<redacted>"'));
       expect(out, contains('"apiKey":"<redacted>"'));
+    });
+  });
+
+  group('formatPercent', () {
+    test('usa vírgula e nunca anuncia 100% antes do limite', () {
+      expect(formatPercent(4.2), '4,2');
+      expect(formatPercent(4), '4');
+      expect(formatPercent(99.96), '99,9');
+      expect(formatPercent(99.9), '99,9');
+      expect(formatPercent(100), '100');
+      expect(formatPercent(130), '100');
     });
   });
 }

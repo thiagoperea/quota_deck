@@ -121,4 +121,24 @@ void main() {
     );
     expect(history.windowId, 'rolling');
   });
+
+  test('worker em isolate próprio responde e persiste configuração', () async {
+    final dir = await Directory.systemTemp.createTemp('qdeck-worker');
+    final worker = LocalQuotaApi(paths: AppPaths(dir));
+    try {
+      final config = await worker.fetchSettings();
+      expect(config.refreshSeconds, greaterThan(0));
+
+      final saved = await worker.saveSettings(
+        config.copyWith(refreshSeconds: 90),
+      );
+      expect(saved.refreshSeconds, 90);
+
+      final again = await worker.fetchSettings();
+      expect(again.refreshSeconds, 90);
+    } finally {
+      await worker.close();
+      await dir.delete(recursive: true);
+    }
+  });
 }

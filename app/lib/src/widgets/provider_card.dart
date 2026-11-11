@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:intl/intl.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
 import '../theme.dart';
@@ -51,7 +52,7 @@ class ProviderAvatar extends StatelessWidget {
 }
 
 /// Card de um provedor. Renderiza janelas agrupadas, erros de auth e cache.
-class ProviderCard extends StatelessWidget {
+class ProviderCard extends StatefulWidget {
   const ProviderCard({
     super.key,
     required this.snapshot,
@@ -59,6 +60,9 @@ class ProviderCard extends StatelessWidget {
     this.onRetry,
     this.onAuthAction,
     this.onOpenWizard,
+    this.onOpenCustomize,
+    this.windows,
+    this.onDemandWindows = const [],
   });
 
   final ProviderSnapshot snapshot;
@@ -66,6 +70,30 @@ class ProviderCard extends StatelessWidget {
   final VoidCallback? onRetry;
   final VoidCallback? onAuthAction;
   final VoidCallback? onOpenWizard;
+
+  /// Abre a personalização do painel a partir do aviso de janelas ocultas.
+  final VoidCallback? onOpenCustomize;
+
+  /// Janelas sempre visíveis. `null` usa todas as janelas do snapshot.
+  final List<QuotaWindow>? windows;
+
+  /// Janelas atrás do "mostrar mais".
+  final List<QuotaWindow> onDemandWindows;
+
+  @override
+  State<ProviderCard> createState() => _ProviderCardState();
+}
+
+class _ProviderCardState extends State<ProviderCard> {
+  bool _expanded = false;
+
+  ProviderSnapshot get snapshot => widget.snapshot;
+  bool get compact => widget.compact;
+  VoidCallback? get onRetry => widget.onRetry;
+  VoidCallback? get onAuthAction => widget.onAuthAction;
+  VoidCallback? get onOpenWizard => widget.onOpenWizard;
+
+  List<QuotaWindow> get _alwaysWindows => widget.windows ?? snapshot.windows;
 
   bool get _isAuthError => snapshot.errors.any(
     (error) =>
@@ -152,22 +180,27 @@ class ProviderCard extends StatelessWidget {
               const SizedBox(height: 9),
               _ErrorPanel(error: _otherError!, onRetry: onRetry),
             ],
-            if (snapshot.windows.isNotEmpty) ...[
+            if (_alwaysWindows.isNotEmpty ||
+                widget.onDemandWindows.isNotEmpty) ...[
               if (snapshot.hasError) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [
                     Icon(Icons.history, size: 12, color: palette.dim),
                     const SizedBox(width: 5),
-                    Text(
-                      snapshot.sourceId == 'claude-desktop-history'
-                          ? 'Histórico local do Desktop (estimado)'
-                          : 'Último snapshot em cache',
-                      style: TextStyle(
-                        color: palette.dim,
-                        fontSize: QdType.micro,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
+                    Expanded(
+                      child: Text(
+                        snapshot.sourceId == 'claude-desktop-history'
+                            ? 'Histórico local do Desktop (estimado)'
+                            : 'Último snapshot em cache',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: palette.dim,
+                          fontSize: QdType.micro,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -175,6 +208,23 @@ class ProviderCard extends StatelessWidget {
               ] else
                 const SizedBox(height: 9),
               ..._buildGroups(context),
+            ] else if (snapshot.windows.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: Key('provider-customize-${snapshot.provider.name}'),
+                  onPressed: widget.onOpenCustomize,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    textStyle: const TextStyle(fontSize: QdType.small),
+                  ),
+                  child: const Text(
+                    'Todas as janelas estão ocultas · Personalizar',
+                  ),
+                ),
+              ),
             ] else if (_isNotInstalled) ...[
               const SizedBox(height: 8),
               Text(
@@ -198,7 +248,7 @@ class ProviderCard extends StatelessWidget {
                     TextButton(
                       onPressed: onRetry,
                       style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 30),
+                        minimumSize: const Size(0, 34),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
                       child: const Text(
@@ -236,26 +286,18 @@ class ProviderCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'fonte: ${_friendlySource(snapshot)}',
-                    style: TextStyle(
-                      color: palette.dim,
-                      fontSize: QdType.micro,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'atualizado ${relativeTime(snapshot.fetchedAt)}',
-                  style: TextStyle(color: palette.dim, fontSize: QdType.micro),
-                ),
-              ],
-            ),
+            if (snapshot.stale ||
+                snapshot.hasError ||
+                snapshot.confidence != Confidence.high) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${_friendlySource(snapshot)} · '
+                '${relativeTime(snapshot.fetchedAt)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: palette.dim, fontSize: QdType.micro),
+              ),
+            ],
           ],
         ),
       ),
@@ -265,7 +307,11 @@ class ProviderCard extends StatelessWidget {
   List<Widget> _buildGroups(BuildContext context) {
     final palette = QdPalette.of(context);
     final groups = <String?, List<QuotaWindow>>{};
-    for (final window in sortWindowsForDisplay(snapshot.windows)) {
+    final windows = [
+      ..._alwaysWindows,
+      if (_expanded) ...widget.onDemandWindows,
+    ];
+    for (final window in sortWindowsForDisplay(windows)) {
       groups.putIfAbsent(window.group, () => []).add(window);
     }
 
@@ -294,6 +340,31 @@ class ProviderCard extends StatelessWidget {
         widgets.add(_WindowRow(window: entry.value[i], compact: compact));
       }
     }
+    if (widget.onDemandWindows.isNotEmpty) {
+      widgets.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: Key('provider-ondemand-${snapshot.provider.name}'),
+            onPressed: () => setState(() => _expanded = !_expanded),
+            icon: Icon(
+              _expanded ? Icons.expand_less : Icons.expand_more,
+              size: 14,
+            ),
+            label: Text(
+              _expanded
+                  ? 'Mostrar menos'
+                  : 'Mostrar mais (${widget.onDemandWindows.length})',
+              style: const TextStyle(fontSize: QdType.meta),
+            ),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 34),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+            ),
+          ),
+        ),
+      );
+    }
     return widgets;
   }
 
@@ -308,10 +379,11 @@ class ProviderCard extends StatelessWidget {
     final balance = credits.balance;
     if (balance != null && balance > 0) {
       final currency = credits.currency;
-      final amount = balance == balance.roundToDouble()
-          ? balance.toStringAsFixed(0)
-          : balance.toStringAsFixed(2);
-      final value = 'Saldo: $amount${currency == null ? '' : ' $currency'}';
+      final amount = NumberFormat.simpleCurrency(
+        locale: 'pt_BR',
+        name: currency ?? 'BRL',
+      ).format(balance);
+      final value = 'Saldo: $amount';
       return hasNote ? '$value · $note' : value;
     }
     if (hasNote) return note;
@@ -411,45 +483,60 @@ class _WindowRow extends StatelessWidget {
     final resetLabel = reset == null
         ? 'sem reset'
         : 'reset ${relativeTime(reset)}';
+    final used = formatPercent(window.usedPercent);
+    final remaining = formatPercent(window.remainingPercent);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                window.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: palette.muted, fontSize: 11),
+    return Semantics(
+      container: true,
+      label: '${window.label}: $used por cento usado, restam $remaining, '
+          '$resetLabel',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  window.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: palette.muted, fontSize: 11),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${formatPercent(window.usedPercent)}%',
-              style: TextStyle(
-                color: palette.text,
-                fontSize: 11,
-                fontFeatures: const [FontFeature.tabularFigures()],
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Restam $remaining%',
+                child: Text(
+                  '$used%',
+                  style: TextStyle(
+                    color: palette.text,
+                    fontSize: compact ? 15 : 17,
+                    fontWeight: FontWeight.w700,
+                    height: 1.05,
+                    letterSpacing: -0.2,
+                    fontFeatures: QdType.numeric,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-        SizedBox(height: compact ? 4 : 5),
-        QuotaBar(
-          usedPercent: window.usedPercent,
-          status: window.status,
-          height: compact ? 5 : 6,
-        ),
-        const SizedBox(height: 3),
-        Text(
-          resetLabel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: palette.dim, fontSize: QdType.micro),
-        ),
-      ],
+            ],
+          ),
+          SizedBox(height: compact ? 4 : 5),
+          QuotaBar(
+            usedPercent: window.usedPercent,
+            status: window.status,
+            height: compact ? 6 : 8,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            resetLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: palette.dim, fontSize: QdType.micro),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -538,7 +625,7 @@ class _AuthPanel extends StatelessWidget {
                   onPressed: onRetry,
                   style: TextButton.styleFrom(
                     foregroundColor: palette.muted,
-                    minimumSize: const Size(0, 32),
+                    minimumSize: const Size(0, 34),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(fontSize: QdType.meta),
                   ),
@@ -554,7 +641,7 @@ class _AuthPanel extends StatelessWidget {
                   side: BorderSide(
                     color: palette.yellow.withValues(alpha: 0.4),
                   ),
-                  minimumSize: const Size(0, 32),
+                  minimumSize: const Size(0, 34),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   textStyle: const TextStyle(
                     fontSize: QdType.meta,
@@ -614,7 +701,7 @@ class _NotInstalledPanel extends StatelessWidget {
                 TextButton(
                   onPressed: onOpenWizard,
                   style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 30),
+                    minimumSize: const Size(0, 34),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(fontSize: QdType.meta),
                   ),
@@ -644,9 +731,13 @@ class _ErrorPanel extends StatelessWidget {
   final QdeckErrorInfo error;
   final VoidCallback? onRetry;
 
+  DateTime? get _retryAt => parseDate(error.details?['retryAt']);
+
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
+    final retryAt = _retryAt;
+    final blocked = retryAt != null && retryAt.isAfter(DateTime.now().toUtc());
     return Container(
       key: const Key('provider-error-panel'),
       padding: const EdgeInsets.all(9),
@@ -678,12 +769,12 @@ class _ErrorPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onRetry != null)
+              if (onRetry != null && !blocked)
                 TextButton(
                   onPressed: onRetry,
                   style: TextButton.styleFrom(
                     foregroundColor: palette.red,
-                    minimumSize: const Size(0, 28),
+                    minimumSize: const Size(0, 34),
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                   ),
                   child: const Text(
@@ -695,7 +786,9 @@ class _ErrorPanel extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            error.message,
+            blocked
+                ? 'Nova tentativa ${relativeTime(retryAt)}.'
+                : error.message,
             style: TextStyle(
               color: palette.muted,
               fontSize: QdType.small,

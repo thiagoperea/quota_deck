@@ -9,12 +9,6 @@ flutter run -d macos      # ou -d windows / -d linux
 
 O app é single-process: `LocalQuotaApi` chama `packages/core` diretamente. Não há daemon, porta ou token.
 
-Modo mock:
-
-```bash
-flutter run -d macos --dart-define=QDECK_MOCK=1
-```
-
 Build:
 
 ```bash

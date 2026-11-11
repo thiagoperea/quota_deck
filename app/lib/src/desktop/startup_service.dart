@@ -8,8 +8,7 @@ import 'dart:io';
 ///
 /// O app é iniciado com `--startup` para abrir só na bandeja.
 class StartupService {
-  static const _runKey =
-      r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
+  static const _runKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const _valueName = 'QuotaDeck';
   static const _launchAgent = 'com.quotaDeck.app.plist';
   static const _linuxDesktop = 'quota-deck.desktop';

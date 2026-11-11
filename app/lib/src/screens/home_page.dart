@@ -11,13 +11,13 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../version.dart';
 import '../widgets/error_card.dart';
-import '../widgets/mock_controls.dart';
 import '../widgets/onboarding_card.dart';
 import '../widgets/provider_card.dart';
 import '../widgets/provider_wizard.dart';
 import '../widgets/quota_bar.dart';
 import '../widgets/settings_sheet.dart';
 import '../widgets/sparkline.dart';
+import 'customize_page.dart';
 import 'mini_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -31,6 +31,26 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool _wizardShown = false;
+  final Map<String, GlobalKey> _cardKeys = {};
+
+  GlobalKey _keyFor(int index, ProviderSnapshot snapshot) =>
+      _cardKeys.putIfAbsent(
+        '$index|${snapshot.provider.name}|${snapshot.surface?.name ?? ''}|'
+        '${snapshot.sourceId ?? snapshot.source}',
+        () => GlobalKey(),
+      );
+
+  void _focusSnapshot(ProviderSnapshot snapshot) {
+    final index = context.read<AppState>().visibleSnapshots.indexOf(snapshot);
+    if (index < 0) return;
+    final target = _keyFor(index, snapshot).currentContext;
+    if (target == null) return;
+    Scrollable.ensureVisible(
+      target,
+      duration: QdMotion.of(context, const Duration(milliseconds: 220)),
+      alignment: 0.06,
+    );
+  }
 
   @override
   void initState() {
@@ -107,9 +127,15 @@ class _HomePageState extends State<HomePage> {
                           onRefresh: () => unawaited(state.refresh()),
                           onWizard: () =>
                               unawaited(showProviderWizard(context)),
+                          onCustomize: () =>
+                              unawaited(showCustomizePage(context)),
                           onSettings: () =>
                               unawaited(showSettingsSheet(context)),
                         ),
+                        if (state.update != null) ...[
+                          const SizedBox(height: 10),
+                          _UpdateBanner(state: state),
+                        ],
                         if (state.error != null && state.hasData) ...[
                           const SizedBox(height: 12),
                           ErrorCard(
@@ -145,12 +171,21 @@ class _HomePageState extends State<HomePage> {
                           )
                         else ...[
                           _SummaryStats(state: state, compact: compact),
+                          if (state.attentionProviders.isNotEmpty) ...[
+                            SizedBox(height: compact ? 8 : 10),
+                            _AttentionStrip(
+                              state: state,
+                              compact: compact,
+                              onFocus: _focusSnapshot,
+                            ),
+                          ],
                           SizedBox(height: compact ? 12 : 16),
                           _Content(
                             state: state,
                             compact: compact,
                             onAuthAction: (snapshot) =>
                                 _showAuthInstructions(context, snapshot),
+                            keyFor: _keyFor,
                           ),
                         ],
                         SizedBox(height: compact ? 14 : 20),
@@ -367,6 +402,7 @@ class _Header extends StatelessWidget {
     required this.compact,
     required this.onRefresh,
     required this.onWizard,
+    required this.onCustomize,
     required this.onSettings,
   });
 
@@ -374,16 +410,17 @@ class _Header extends StatelessWidget {
   final bool compact;
   final VoidCallback onRefresh;
   final VoidCallback onWizard;
+  final VoidCallback onCustomize;
   final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final enabled = ProviderId.values.where(state.config.isEnabled).length;
-    final generatedAt = state.envelope?.generatedAt;
-    final updateLabel = generatedAt == null
+    final lastUpdate = state.lastUpdatedAt;
+    final updateLabel = lastUpdate == null
         ? 'carregando'
-        : 'Atualizado ${relativeTime(generatedAt)}';
+        : 'Atualizado ${relativeTime(lastUpdate)}';
 
     return Row(
       children: [
@@ -420,14 +457,15 @@ class _Header extends StatelessWidget {
           const Spacer(),
         if (!compact) ...[
           Tooltip(
-            message: generatedAt == null
+            message: lastUpdate == null
                 ? 'Aguardando os dados'
-                : 'Última atualização: ${DateFormat('dd/MM/yyyy HH:mm:ss').format(generatedAt.toLocal())}',
+                : 'Dado mais antigo na tela: '
+                      '${DateFormat('dd/MM/yyyy HH:mm').format(lastUpdate.toLocal())}',
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: palette.panel2,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(QdRadius.pill),
                 border: Border.all(color: palette.border),
               ),
               child: Row(
@@ -437,24 +475,24 @@ class _Header extends StatelessWidget {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: state.refreshing ? palette.yellow : palette.green,
+                      color: state.refreshing
+                          ? palette.yellow
+                          : state.hasStaleData
+                          ? palette.yellow
+                          : palette.green,
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     updateLabel,
-                    style: TextStyle(color: palette.muted, fontSize: 10),
+                    style: TextStyle(color: palette.muted, fontSize: QdType.micro),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(width: 8),
-        ],
-        if (state.mockApi != null) ...[
-          MockControlsButton(compact: compact),
-          const SizedBox(width: 4),
         ],
         _HeaderButton(
           key: const Key('header-refresh'),
@@ -464,21 +502,89 @@ class _Header extends StatelessWidget {
           compact: compact,
           busy: state.refreshing,
         ),
-        const SizedBox(width: 4),
-        _HeaderButton(
-          key: const Key('header-wizard'),
-          icon: Icons.checklist_rtl,
-          tooltip: 'Assistente de provedores',
-          onPressed: onWizard,
-          compact: compact,
-        ),
-        const SizedBox(width: 4),
-        _HeaderButton(
-          key: const Key('header-settings'),
-          icon: Icons.tune,
-          tooltip: 'Configurações (S)',
-          onPressed: onSettings,
-          compact: compact,
+        const SizedBox(width: 6),
+        if (compact)
+          _HeaderButton(
+            key: const Key('header-customize'),
+            icon: Icons.view_quilt,
+            tooltip: 'Personalizar painel',
+            onPressed: onCustomize,
+            compact: true,
+          )
+        else
+          Tooltip(
+            message: 'Ordem e visibilidade das janelas',
+            child: TextButton.icon(
+              key: const Key('header-customize'),
+              onPressed: onCustomize,
+              icon: const Icon(Icons.view_quilt, size: 16),
+              label: const Text('Personalizar'),
+              style: TextButton.styleFrom(
+                foregroundColor: palette.text,
+                backgroundColor: palette.panel2,
+                minimumSize: const Size(0, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: const TextStyle(
+                  fontSize: QdType.small,
+                  fontWeight: FontWeight.w600,
+                ),
+                side: BorderSide(color: palette.border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(QdRadius.control),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(width: 6),
+        PopupMenuButton<String>(
+          key: const Key('header-menu'),
+          tooltip: 'Mais opções',
+          color: palette.panel,
+          constraints: const BoxConstraints(minWidth: 230, maxWidth: 300),
+          onSelected: (value) {
+            switch (value) {
+              case 'wizard':
+                onWizard();
+              case 'settings':
+                onSettings();
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              key: const Key('header-wizard'),
+              value: 'wizard',
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Icon(Icons.checklist_rtl, size: 16, color: palette.muted),
+                  const Text('Assistente de provedores'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              key: const Key('header-settings'),
+              value: 'settings',
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Icon(Icons.tune, size: 16, color: palette.muted),
+                  const Text('Configurações (S)'),
+                ],
+              ),
+            ),
+          ],
+          child: Container(
+            width: compact ? 36 : 38,
+            height: compact ? 36 : 38,
+            decoration: BoxDecoration(
+              color: palette.panel2,
+              borderRadius: BorderRadius.circular(QdRadius.control),
+              border: Border.all(color: palette.border),
+            ),
+            child: Icon(Icons.more_horiz, size: 18, color: palette.muted),
+          ),
         ),
       ],
     );
@@ -531,6 +637,65 @@ class _HeaderButton extends StatelessWidget {
                 )
               : Icon(icon, size: compact ? 16 : 18),
         ),
+      ),
+    );
+  }
+}
+
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    final info = state.update!;
+    return Container(
+      key: const Key('update-banner'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: palette.blue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(QdRadius.card),
+        border: Border.all(color: palette.blue.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.system_update_alt, size: 15, color: palette.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'v${info.version} disponível',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.text,
+                fontSize: QdType.small,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const Key('update-download'),
+            onPressed: () => unawaited(state.openUpdate()),
+            style: TextButton.styleFrom(
+              foregroundColor: palette.blue,
+              minimumSize: const Size(0, 30),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: const Text(
+              'Baixar',
+              style: TextStyle(fontSize: QdType.meta),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Dispensar',
+            onPressed: state.dismissUpdate,
+            icon: const Icon(Icons.close, size: 15),
+            constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+            padding: EdgeInsets.zero,
+          ),
+        ],
       ),
     );
   }
@@ -599,16 +764,6 @@ class _SummaryStats extends StatelessWidget {
     final nextReset = state.nextReset;
     final available = state.estimatedAvailablePercent;
 
-    final usedValue = mostUsed == null
-        ? '—'
-        : '${formatPercent(mostUsed.window.usedPercent)}%';
-    final usedSubtitle = mostUsed == null
-        ? 'sem janelas de quota'
-        : '${mostUsed.snapshot.provider.displayName} · ${mostUsed.window.label}';
-    final usedColor = mostUsed == null
-        ? palette.dim
-        : QuotaBar.colorFor(context, mostUsed.window.status);
-
     final resetValue = nextReset == null
         ? '—'
         : _formatResetValue(nextReset.window.resetsAt!);
@@ -620,16 +775,14 @@ class _SummaryStats extends StatelessWidget {
     final availableValue = available == null
         ? '—'
         : '${formatPercent(available)}%';
+    // A folga é o complemento da janela mais apertada: cor vem do status
+    // dessa janela, a mesma fonte usada pela barra e pelo badge.
     final availableSubtitle = mostUsed == null
         ? 'sem dados para estimar'
-        : 'janela mais apertada · ${mostUsed.snapshot.provider.displayName}';
-    final availableColor = available == null
+        : '${mostUsed.snapshot.provider.displayName} · ${mostUsed.window.label}';
+    final availableColor = mostUsed == null
         ? palette.dim
-        : available >= 50
-        ? palette.green
-        : available >= 20
-        ? palette.yellow
-        : palette.red;
+        : QuotaBar.colorFor(context, mostUsed.window.status);
 
     if (compact) {
       return Container(
@@ -644,10 +797,10 @@ class _SummaryStats extends StatelessWidget {
           children: [
             Expanded(
               child: _SummaryKpi(
-                label: 'MAIOR CONSUMO',
-                value: usedValue,
-                subtitle: usedSubtitle,
-                color: usedColor,
+                label: 'FOLGA',
+                value: availableValue,
+                subtitle: availableSubtitle,
+                color: availableColor,
               ),
             ),
             _KpiDivider(palette: palette),
@@ -657,15 +810,6 @@ class _SummaryStats extends StatelessWidget {
                 value: resetValue,
                 subtitle: resetSubtitle,
                 color: palette.yellow,
-              ),
-            ),
-            _KpiDivider(palette: palette),
-            Expanded(
-              child: _SummaryKpi(
-                label: 'DISPONÍVEL',
-                value: availableValue,
-                subtitle: availableSubtitle,
-                color: availableColor,
               ),
             ),
           ],
@@ -678,17 +822,11 @@ class _SummaryStats extends StatelessWidget {
         final cards = [
           _StatCard(
             key: const Key('summary-available'),
-            label: 'Disponível estimado',
+            label: 'Folga da janela mais apertada',
             value: availableValue,
             subtitle: availableSubtitle,
             color: availableColor,
             large: true,
-          ),
-          _StatCard(
-            label: 'Maior consumo agora',
-            value: usedValue,
-            subtitle: usedSubtitle,
-            color: usedColor,
           ),
           _StatCard(
             label: 'Próximo reset',
@@ -697,13 +835,13 @@ class _SummaryStats extends StatelessWidget {
             color: palette.yellow,
           ),
         ];
-        if (constraints.maxWidth >= 720) {
+        if (constraints.maxWidth >= 560) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (var i = 0; i < cards.length; i++) ...[
                 if (i > 0) const SizedBox(width: 12),
-                Expanded(flex: i == 0 ? 5 : 4, child: cards[i]),
+                Expanded(child: cards[i]),
               ],
             ],
           );
@@ -719,6 +857,145 @@ class _SummaryStats extends StatelessWidget {
       },
     );
   }
+}
+
+/// Faixa compacta com quem precisa de ação, sem reordenar os cards.
+class _AttentionStrip extends StatelessWidget {
+  const _AttentionStrip({
+    required this.state,
+    required this.compact,
+    required this.onFocus,
+  });
+
+  final AppState state;
+  final bool compact;
+  final ValueChanged<ProviderSnapshot> onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    final items = state.attentionProviders;
+    if (items.isEmpty) return const SizedBox.shrink();
+    final visible = items.take(3).toList(growable: false);
+    final hidden = items.length - visible.length;
+
+    return Container(
+      key: const Key('attention-strip'),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: palette.yellow.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(QdRadius.card),
+        border: Border.all(color: palette.yellow.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.priority_high, size: 13, color: palette.yellow),
+              const SizedBox(width: 4),
+              Text(
+                'PRECISA DE ATENÇÃO',
+                style: TextStyle(
+                  color: palette.yellow,
+                  fontSize: QdType.micro,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const Spacer(),
+              if (hidden > 0)
+                Text(
+                  '+$hidden',
+                  style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final snapshot in visible)
+            InkWell(
+              key: ObjectKey(snapshot),
+              onTap: () => onFocus(snapshot),
+              borderRadius: BorderRadius.circular(QdRadius.chip),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: _attentionColor(context, palette, snapshot),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${snapshot.provider.displayName} · '
+                        '${_attentionLabel(snapshot)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: palette.text,
+                          fontSize: QdType.small,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      snapshot.worstWindow == null
+                          ? ''
+                          : '${formatPercent(snapshot.worstWindow!.usedPercent)}%',
+                      style: TextStyle(
+                        color: _attentionColor(context, palette, snapshot),
+                        fontSize: QdType.small,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: QdType.numeric,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color _attentionColor(
+    BuildContext context,
+    QdPalette palette,
+    ProviderSnapshot snapshot,
+  ) {
+    if (_needsAuth(snapshot) || snapshot.stale) return palette.yellow;
+    return QuotaBar.colorFor(
+      context,
+      snapshot.worstWindow?.status ?? QuotaStatus.unknown,
+    );
+  }
+
+  String _attentionLabel(ProviderSnapshot snapshot) {
+    if (_needsAuth(snapshot)) return 'login necessário';
+    if (snapshot.stale) return 'dado de ${relativeTime(snapshot.fetchedAt)}';
+    final window = snapshot.worstWindow;
+    if (window == null) return 'sem janelas';
+    return '${window.label} · ${_statusText(window.status)}';
+  }
+
+  String _statusText(QuotaStatus status) => switch (status) {
+    QuotaStatus.warning => 'atenção',
+    QuotaStatus.critical => 'crítico',
+    QuotaStatus.limited => 'limite',
+    QuotaStatus.unknown => 'sem dado',
+    QuotaStatus.ok => 'ok',
+  };
+
+  bool _needsAuth(ProviderSnapshot snapshot) => snapshot.errors.any(
+    (error) =>
+        error.code == 'AUTH_EXPIRED' ||
+        error.code == 'AUTH_MISSING' ||
+        error.code == 'PERMISSION_DENIED',
+  );
 }
 
 class _KpiDivider extends StatelessWidget {
@@ -866,22 +1143,39 @@ class _Content extends StatelessWidget {
     required this.state,
     required this.compact,
     required this.onAuthAction,
+    required this.keyFor,
   });
 
   final AppState state;
   final bool compact;
   final ValueChanged<ProviderSnapshot> onAuthAction;
+  final GlobalKey Function(int index, ProviderSnapshot snapshot) keyFor;
 
   @override
   Widget build(BuildContext context) {
     final cards = [
-      for (final snapshot in state.visibleSnapshots)
-        ProviderCard(
-          snapshot: snapshot,
-          compact: compact,
-          onRetry: () => unawaited(state.refresh(provider: snapshot.provider)),
-          onAuthAction: () => onAuthAction(snapshot),
-          onOpenWizard: () => unawaited(showProviderWizard(context)),
+      for (var index = 0; index < state.visibleSnapshots.length; index++)
+        KeyedSubtree(
+          key: keyFor(index, state.visibleSnapshots[index]),
+          child: RepaintBoundary(
+            child: ProviderCard(
+              snapshot: state.visibleSnapshots[index],
+              compact: compact,
+              windows: state.windowsFor(
+                state.visibleSnapshots[index],
+                includeOnDemand: false,
+              ),
+              onDemandWindows: state.onDemandWindowsFor(
+                state.visibleSnapshots[index],
+              ),
+              onRetry: () => unawaited(
+                state.refresh(provider: state.visibleSnapshots[index].provider),
+              ),
+              onAuthAction: () => onAuthAction(state.visibleSnapshots[index]),
+              onOpenWizard: () => unawaited(showProviderWizard(context)),
+              onOpenCustomize: () => unawaited(showCustomizePage(context)),
+            ),
+          ),
         ),
     ];
 
@@ -892,8 +1186,9 @@ class _Content extends StatelessWidget {
     ];
 
     return LayoutBuilder(
-      builder: (context, _) {
-        final wide = !compact && MediaQuery.sizeOf(context).width >= 980;
+      builder: (context, constraints) {
+        // 760 px: abaixo disso o painel lateral desce; acima, cabe ao lado.
+        final wide = !compact && constraints.maxWidth >= 760;
         if (wide) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1095,11 +1390,15 @@ class _TrendPanel extends StatelessWidget {
                       children: [
                         _LegendDot(color: color),
                         const SizedBox(width: 5),
-                        Text(
-                          'uso',
-                          style: TextStyle(
-                            color: palette.muted,
-                            fontSize: QdType.micro,
+                        Flexible(
+                          child: Text(
+                            'uso',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.muted,
+                              fontSize: QdType.micro,
+                            ),
                           ),
                         ),
                       ],
@@ -1109,11 +1408,15 @@ class _TrendPanel extends StatelessWidget {
                       children: [
                         _LegendDot(color: palette.yellow),
                         const SizedBox(width: 5),
-                        Text(
-                          'atenção 80%',
-                          style: TextStyle(
-                            color: palette.muted,
-                            fontSize: QdType.micro,
+                        Flexible(
+                          child: Text(
+                            'atenção 80%',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.muted,
+                              fontSize: QdType.micro,
+                            ),
                           ),
                         ),
                       ],
@@ -1122,12 +1425,16 @@ class _TrendPanel extends StatelessWidget {
                 ),
               ),
               if (!collecting && history?.etaHours != null)
-                Text(
-                  'ETA ${_formatEta(history!.etaHours)}',
-                  style: TextStyle(
-                    color: palette.blue,
-                    fontSize: QdType.micro,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    'ETA ${_formatEta(history!.etaHours)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.blue,
+                      fontSize: QdType.micro,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
             ],

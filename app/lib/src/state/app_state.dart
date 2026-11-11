@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
-import '../api/mock_api.dart';
 import '../api/quota_api.dart';
+import '../desktop/notification_service.dart';
+import '../desktop/update_service.dart';
+import '../version.dart';
 
 class TightestQuota {
   const TightestQuota({required this.snapshot, required this.window});
@@ -25,7 +27,17 @@ class AppState extends ChangeNotifier {
     this._api, {
     this.onLaunchAtLoginChanged,
     this.isLaunchAtLoginEnabled,
-  });
+    Notifier? notifier,
+    NotificationStateStore notificationStore = const NotificationStateStore(
+      null,
+    ),
+    UpdateService? updateService,
+    this.onRequestNotificationPermission,
+  }) : _notifier = notifier, // ignore: prefer_initializing_formals
+       // ignore: prefer_initializing_formals
+       _notificationStore = notificationStore,
+       // ignore: prefer_initializing_formals
+       _updateService = updateService;
 
   final QuotaApi _api;
 
@@ -34,6 +46,18 @@ class AppState extends ChangeNotifier {
 
   /// Lê o estado real do autostart para refletir no toggle.
   final Future<bool> Function()? isLaunchAtLoginEnabled;
+
+  /// Pede permissão de notificação no macOS (ligado no `main`).
+  final Future<void> Function()? onRequestNotificationPermission;
+
+  final Notifier? _notifier;
+  final NotificationStateStore _notificationStore;
+  final UpdateService? _updateService;
+  NotificationPolicy _notificationPolicy = NotificationPolicy();
+  UpdateInfo? _update;
+  DateTime? _lastUpdateCheck;
+  Timer? _updateTimer;
+  DateTime? _lastBackgroundRefresh;
 
   SnapshotEnvelope? _envelope;
   AppConfig _config = AppConfig.defaults().copyWith(theme: 'dark');
@@ -68,6 +92,9 @@ class AppState extends ChangeNotifier {
   List<DetectionResult> get detections => _detections;
   bool get detecting => _detecting;
 
+  /// Release mais nova encontrada, se houver.
+  UpdateInfo? get update => _update;
+
   /// Janela mini (popover da bandeja) em vez do painel completo.
   bool get miniMode => _miniMode;
 
@@ -75,35 +102,6 @@ class AppState extends ChangeNotifier {
     if (_miniMode == value) return;
     _miniMode = value;
     _safeNotify();
-  }
-
-  /// `null` em produção; usado pelos controles de cenário do mock.
-  MockApi? get mockApi => _api is MockApi ? _api : null;
-
-  /// Troca o cenário do mock e recarrega o envelope do zero.
-  Future<void> applyMockScenario(MockScenario scenario) async {
-    final mock = mockApi;
-    if (mock == null) return;
-    mock.setScenario(scenario);
-
-    _initializing = false;
-    _detectionFuture = null;
-    _detections = const [];
-    _doctorChecks = const [];
-    _history.clear();
-    _envelope = null;
-    _meta = null;
-    _error = null;
-    _initialized = false;
-    _loading = true;
-    _refreshing = false;
-    _safeNotify();
-
-    if (scenario == MockScenario.loading) {
-      unawaited(initialize(force: true));
-      return;
-    }
-    await initialize(force: true);
   }
 
   DetectionResult? detectionFor(ProviderId provider) {
@@ -158,13 +156,44 @@ class AppState extends ChangeNotifier {
           return true;
         })
         .toList(growable: false);
-    enabled.sort(
-      (a, b) => a.provider.displayName.toLowerCase().compareTo(
+    enabled.sort((a, b) {
+      final byRank = _config
+          .providerRank(a.provider)
+          .compareTo(_config.providerRank(b.provider));
+      if (byRank != 0) return byRank;
+      return a.provider.displayName.toLowerCase().compareTo(
         b.provider.displayName.toLowerCase(),
-      ),
-    );
+      );
+    });
     return enabled;
   }
+
+  /// Janelas que devem aparecer, respeitando a visibilidade configurada.
+  List<QuotaWindow> windowsFor(
+    ProviderSnapshot snapshot, {
+    bool includeOnDemand = true,
+  }) {
+    return [
+      for (final window in snapshot.windows)
+        if (_config.visibilityFor(snapshot.provider, window.id) ==
+            WindowVisibility.always)
+          window
+        else if (includeOnDemand &&
+            _config.visibilityFor(snapshot.provider, window.id) ==
+                WindowVisibility.onDemand)
+          window,
+    ];
+  }
+
+  List<QuotaWindow> onDemandWindowsFor(ProviderSnapshot snapshot) => [
+    for (final window in snapshot.windows)
+      if (_config.visibilityFor(snapshot.provider, window.id) ==
+          WindowVisibility.onDemand)
+        window,
+  ];
+
+  int onDemandCount(ProviderSnapshot snapshot) =>
+      onDemandWindowsFor(snapshot).length;
 
   bool get isEmpty =>
       _initialized &&
@@ -190,7 +219,7 @@ class AppState extends ChangeNotifier {
     TightestQuota? result;
     for (final snapshot in visibleSnapshots) {
       if (_isAuthError(snapshot)) continue;
-      for (final window in snapshot.windows) {
+      for (final window in windowsFor(snapshot, includeOnDemand: false)) {
         if (result == null || window.usedPercent > result.window.usedPercent) {
           result = TightestQuota(snapshot: snapshot, window: window);
         }
@@ -198,6 +227,35 @@ class AppState extends ChangeNotifier {
     }
     return result;
   }
+
+  /// Provedores que pedem ação: erro de autenticação, dado velho ou janela
+  /// em aviso/crítico. Usado pela faixa "Precisa de atenção".
+  List<ProviderSnapshot> get attentionProviders => [
+    for (final snapshot in visibleSnapshots)
+      if (_isAuthError(snapshot) ||
+          snapshot.stale ||
+          switch (snapshot.worstWindow?.status) {
+            QuotaStatus.warning ||
+            QuotaStatus.critical ||
+            QuotaStatus.limited => true,
+            _ => false,
+          })
+        snapshot,
+  ];
+
+  /// Momento do dado mais antigo exibido. Evita dizer "atualizado agora"
+  /// quando parte dos provedores veio do cache.
+  DateTime? get lastUpdatedAt {
+    DateTime? oldest;
+    for (final snapshot in visibleSnapshots) {
+      final fetched = snapshot.fetchedAt;
+      if (oldest == null || fetched.isBefore(oldest)) oldest = fetched;
+    }
+    return oldest ?? _envelope?.generatedAt;
+  }
+
+  bool get hasStaleData =>
+      _error != null || visibleSnapshots.any((snapshot) => snapshot.stale);
 
   List<UpcomingReset> upcomingResets({
     int limit = 4,
@@ -255,6 +313,7 @@ class AppState extends ChangeNotifier {
       _config = summary.config;
       _meta = summary.meta;
       _error = null;
+      _notificationPolicy = await _notificationStore.load();
       final actualLaunchAtLogin = await isLaunchAtLoginEnabled?.call();
       if (actualLaunchAtLogin != null &&
           actualLaunchAtLogin != _config.launchAtLogin) {
@@ -264,11 +323,23 @@ class AppState extends ChangeNotifier {
         unawaited(_applyLaunchAtLogin(true));
       }
       _scheduleTimer();
+      _scheduleUpdateTimer();
       _loading = false;
       _initialized = true;
       _safeNotify();
       await _loadFeaturedHistory();
-      unawaited(detectProviders());
+      if (_config.notificationsEnabled) {
+        unawaited(requestNotificationPermission());
+      }
+      unawaited(_evaluateNotifications(summary.envelope));
+      if (_config.checkUpdates) unawaited(checkForUpdates());
+      // Na primeira execução a detecção define o que aparece no painel; nas
+      // seguintes ela é complementar e não deve atrasar a abertura.
+      if (_config.onboardingCompleted) {
+        unawaited(detectProviders());
+      } else {
+        await detectProviders();
+      }
     } on ApiException catch (error) {
       _error = error.message;
     } catch (_) {
@@ -283,25 +354,68 @@ class AppState extends ChangeNotifier {
 
   Future<void> retry() => initialize(force: true);
 
-  Future<void> refresh({ProviderId? provider, bool silent = false}) async {
-    if (_refreshing) return;
-    _refreshing = true;
-    if (!silent) _safeNotify();
+  Future<void>? _refreshFuture;
+  bool _refreshDirty = false;
+  ProviderId? _nextProvider;
+  bool _nextSilent = true;
 
+  /// Atualiza as quotas. Chamadas concorrentes não são descartadas: quem
+  /// chega durante uma execução aguarda e pede uma nova rodada no final
+  /// (last-wins), devolvendo dados realmente frescos para botão e wizard.
+  Future<void> refresh({ProviderId? provider, bool silent = false}) {
+    final running = _refreshFuture;
+    if (running != null) {
+      _refreshDirty = true;
+      _nextProvider = provider;
+      _nextSilent = _nextSilent && silent;
+      return running;
+    }
+    final future = _drainRefresh(provider: provider, silent: silent);
+    _refreshFuture = future;
+    return future;
+  }
+
+  Future<void> _drainRefresh({
+    ProviderId? provider,
+    bool silent = false,
+  }) async {
+    var nextProvider = provider;
+    var nextSilent = silent;
+    _refreshing = true;
+    _nextSilent = true;
+    if (!nextSilent) _safeNotify();
+    try {
+      while (true) {
+        _refreshDirty = false;
+        await _refreshOnce(provider: nextProvider);
+        if (!_refreshDirty) break;
+        nextProvider = _nextProvider;
+        nextSilent = _nextSilent;
+        _nextProvider = null;
+        if (!nextSilent) _safeNotify();
+      }
+    } finally {
+      _refreshing = false;
+      _refreshFuture = null;
+      _safeNotify();
+    }
+  }
+
+  Future<void> _refreshOnce({ProviderId? provider}) async {
     try {
       final envelope = await _api.refresh(provider: provider);
+      if (_disposed) return;
       _envelope = envelope;
       _error = null;
-      _refreshing = false;
+      _lastBackgroundRefresh = DateTime.now();
       _safeNotify();
       await _loadFeaturedHistory(force: true);
+      unawaited(_evaluateNotifications(envelope));
     } on ApiException catch (error) {
       _error = error.message;
     } catch (_) {
-      _error = 'Não foi possível atualizar as quotas. Os dados anteriores continuam na tela.';
-    } finally {
-      _refreshing = false;
-      _safeNotify();
+      _error =
+          'Não foi possível atualizar as quotas. Os dados anteriores continuam na tela.';
     }
   }
 
@@ -311,10 +425,43 @@ class AppState extends ChangeNotifier {
     _safeNotify();
   }
 
-  Future<bool> saveSettings(AppConfig next) async {
-    if (_saving) return false;
+  AppConfig? _pendingSave;
+  Future<bool>? _saveFuture;
+  bool _lastSaveResult = true;
+
+  /// Grava as configurações em série. Chamadas durante uma gravação são
+  /// coalescidas: o snapshot mais recente é o que fica no disco.
+  Future<bool> saveSettings(AppConfig next) {
+    _pendingSave = next;
+    final running = _saveFuture;
+    if (running != null) {
+      return running.then((_) => _lastSaveResult);
+    }
+    final future = _drainSaves();
+    _saveFuture = future;
+    return future;
+  }
+
+  Future<bool> _drainSaves() async {
     _saving = true;
     _safeNotify();
+    var ok = true;
+    try {
+      while (_pendingSave != null) {
+        final next = _pendingSave!;
+        _pendingSave = null;
+        ok = await _saveConfig(next);
+      }
+    } finally {
+      _lastSaveResult = ok;
+      _saving = false;
+      _saveFuture = null;
+      _safeNotify();
+    }
+    return ok;
+  }
+
+  Future<bool> _saveConfig(AppConfig next) async {
     try {
       final previous = _config;
       final saved = await _api.saveSettings(next);
@@ -329,6 +476,15 @@ class AppState extends ChangeNotifier {
         }
       }
       _scheduleTimer();
+      _scheduleUpdateTimer();
+      if (!previous.notificationsEnabled && saved.notificationsEnabled) {
+        await requestNotificationPermission();
+        final envelope = _envelope;
+        if (envelope != null) unawaited(_evaluateNotifications(envelope));
+      }
+      if (!previous.checkUpdates && saved.checkUpdates) {
+        unawaited(checkForUpdates(force: true));
+      }
       return true;
     } on ApiException catch (error) {
       _error = error.message;
@@ -336,9 +492,6 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       _error = 'Não foi possível salvar as configurações. Tente novamente.';
       return false;
-    } finally {
-      _saving = false;
-      _safeNotify();
     }
   }
 
@@ -381,25 +534,58 @@ class AppState extends ChangeNotifier {
     _safeNotify();
   }
 
-  Future<void> detectProviders() => _detectionFuture ??= _runDetection();
+  Future<void> detectProviders({bool force = false}) {
+    if (force) {
+      _detectionFuture = null;
+    }
+    return _detectionFuture ??= _runDetection(explicit: force);
+  }
 
-  Future<void> _runDetection() async {
+  /// Nova varredura pedida pelo usuário (bandeja/assistente).
+  Future<void> redetect() async {
+    final pending = _detectionFuture;
+    if (pending != null) {
+      try {
+        await pending;
+      } catch (_) {}
+    }
+    _detectionFuture = null;
+    await detectProviders(force: true);
+  }
+
+  Future<void> _runDetection({bool explicit = false}) async {
     _detecting = true;
     _safeNotify();
     try {
       _detections = await _api.detect();
-      if (!_config.onboardingCompleted && _detections.isNotEmpty) {
-        // Primeira execução: o painel atrás do wizard só mostra o que existe.
-        final installed = {
-          for (final d in _detections)
-            if (d.detected) d.provider,
-        };
+      final installed = <ProviderId>{
+        for (final detection in _detections)
+          if (detection.detected) detection.provider,
+      };
+      if (_detections.isEmpty) return;
+
+      final firstRun = !_config.onboardingCompleted;
+      if (firstRun) {
+        // Primeira execução: o painel mostra só o que existe e o resultado
+        // é persistido para não depender do wizard.
         _config = _config.copyWith(
           providers: {
             for (final provider in ProviderId.values)
               provider.wireName: installed.contains(provider),
           },
         );
+        await _persistDetection();
+      } else if (explicit) {
+        // Detecção pedida pelo usuário só liga o que achou; nunca desliga.
+        if (installed.any((provider) => !_config.isEnabled(provider))) {
+          _config = _config.copyWith(
+            providers: {
+              ..._config.providers,
+              for (final provider in installed) provider.wireName: true,
+            },
+          );
+          await _persistDetection();
+        }
       }
     } catch (_) {
       // Detecção é complementar: mantém o que já havia.
@@ -407,6 +593,14 @@ class AppState extends ChangeNotifier {
       _detecting = false;
       _detectionFuture = null;
       _safeNotify();
+    }
+  }
+
+  Future<void> _persistDetection() async {
+    try {
+      _config = await _api.saveSettings(_config);
+    } catch (_) {
+      // Mantém a mudança em memória se a gravação falhar.
     }
   }
 
@@ -428,9 +622,97 @@ class AppState extends ChangeNotifier {
     final seconds = _config.refreshSeconds;
     if (seconds <= 0) return;
     _timer = Timer.periodic(Duration(seconds: seconds), (_) {
-      if (_disposed || !_windowActive) return;
+      if (_disposed) return;
+      if (!_windowActive) {
+        // Com a janela na bandeja, só busca para poder notificar.
+        if (!_config.notificationsEnabled) return;
+        final now = DateTime.now();
+        final last = _lastBackgroundRefresh;
+        if (last != null && now.difference(last) < const Duration(minutes: 5)) {
+          return;
+        }
+        _lastBackgroundRefresh = now;
+      }
       unawaited(refresh(silent: true));
     });
+  }
+
+  /// Pede permissão de notificação (macOS) quando o usuário ativa o recurso.
+  Future<void> requestNotificationPermission() async {
+    try {
+      await onRequestNotificationPermission?.call();
+    } catch (_) {}
+  }
+
+  /// Envia uma notificação de teste para validar a entrega no sistema.
+  Future<bool> sendTestNotification() async {
+    final notifier = _notifier;
+    if (notifier == null) return false;
+    await notifier.show(
+      const NotificationMessage(
+        title: 'QuotaDeck',
+        body: 'Notificações ativas. Você será avisado ao cruzar os limites.',
+      ),
+    );
+    return true;
+  }
+
+  Future<void> _evaluateNotifications(SnapshotEnvelope envelope) async {
+    if (!_config.notificationsEnabled) return;
+    // Com o painel à frente o usuário já vê o estado; notificar seria ruído.
+    if (_windowActive) return;
+    final notifier = _notifier;
+    if (notifier == null) return;
+    final messages = _notificationPolicy.evaluate(
+      envelope: envelope,
+      config: _config,
+    );
+    for (final message in messages) {
+      await notifier.show(message);
+    }
+    if (messages.isNotEmpty || _notificationStore.file != null) {
+      await _notificationStore.save(_notificationPolicy);
+    }
+  }
+
+  void _scheduleUpdateTimer() {
+    _updateTimer?.cancel();
+    if (_updateService == null || !_config.checkUpdates) return;
+    _updateTimer = Timer.periodic(
+      const Duration(hours: 24),
+      (_) => unawaited(checkForUpdates(force: true)),
+    );
+  }
+
+  /// Consulta a última release; silencioso em qualquer falha.
+  Future<void> checkForUpdates({bool force = false}) async {
+    final service = _updateService;
+    if (service == null) return;
+    if (!_config.checkUpdates && !force) return;
+    final now = DateTime.now();
+    final last = _lastUpdateCheck;
+    if (!force &&
+        last != null &&
+        now.difference(last) < const Duration(hours: 24)) {
+      return;
+    }
+    _lastUpdateCheck = now;
+    final info = await service.check(currentVersion: appVersion);
+    if (info == null || _disposed) return;
+    _update = info;
+    _safeNotify();
+  }
+
+  void dismissUpdate() {
+    _update = null;
+    _safeNotify();
+  }
+
+  Future<bool> openUpdate() async {
+    final info = _update;
+    final service = _updateService;
+    if (info == null || service == null) return false;
+    return service.openExternal(info.url);
   }
 
   /// Pausa o polling quando a janela está oculta na bandeja.
@@ -443,6 +725,7 @@ class AppState extends ChangeNotifier {
   /// Fecha recursos pendentes antes de encerrar o processo.
   Future<void> shutdown() async {
     _timer?.cancel();
+    _updateTimer?.cancel();
     _disposed = true;
     await _api.close();
   }
@@ -462,6 +745,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    _updateTimer?.cancel();
     unawaited(_api.close());
     super.dispose();
   }

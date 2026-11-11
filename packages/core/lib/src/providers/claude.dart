@@ -46,9 +46,9 @@ class ClaudeProvider implements ProviderAdapter {
       installed: installed,
       authenticated: authenticated,
       live: true,
-      location:
-          binary ??
-          (fileExists ? AppPaths.maskPath(file.path, env: ctx.env) : null),
+      location: binary != null
+          ? AppPaths.maskPath(binary, env: ctx.env)
+          : (fileExists ? AppPaths.maskPath(file.path, env: ctx.env) : null),
       account: null,
       reason: authenticated
           ? 'Token OAuth do Claude Code presente.'
@@ -205,6 +205,7 @@ class ClaudeProvider implements ProviderAdapter {
         code: QdeckErrorCode.rateLimited,
         provider: id,
         message: 'Rate limit no endpoint de uso do $accountLabel.',
+        details: rateLimitDetails(response.headers),
       );
     }
     if (response.statusCode != 200) {

@@ -404,6 +404,7 @@ class AntigravityProvider implements ProviderAdapter {
         code: QdeckErrorCode.rateLimited,
         provider: id,
         message: 'Rate limit no RPC local do Antigravity.',
+        details: rateLimitDetails(response.headers),
       );
     }
     throw QdeckException(

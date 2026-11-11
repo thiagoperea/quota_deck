@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../app.dart';
+import '../screens/customize_page.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -108,7 +111,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _confirmDiscard() async {
+  Future<bool> _confirmDiscard() async {
     final palette = QdPalette.of(context);
     final discard = await showDialog<bool>(
       context: context,
@@ -130,6 +133,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       ),
     );
     if (discard == true && mounted) await _discardAndPop();
+    return discard == true;
   }
 
   Future<void> _close() async {
@@ -210,7 +214,203 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const _SectionLabel('Atualização automática'),
+                        const _SectionLabel('Painel'),
+                        Material(
+                          color: palette.panel2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: palette.border),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: ListTile(
+                            key: const Key('settings-customize'),
+                            leading: Icon(
+                              Icons.view_quilt,
+                              size: 18,
+                              color: palette.muted,
+                            ),
+                            title: Text(
+                              'Personalizar ordem e janelas',
+                              style: TextStyle(
+                                color: palette.text,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Sempre visível, sob demanda ou oculta.',
+                              style: TextStyle(
+                                color: palette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: palette.dim,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            onTap: () async {
+                              final navigator = Navigator.of(context);
+                              if (_dirty && !_saving) {
+                                final discard = await _confirmDiscard();
+                                if (!discard) return;
+                              } else {
+                                navigator.pop();
+                              }
+                              if (!mounted) return;
+                              final host = rootNavigatorKey.currentContext;
+                              if (host != null && host.mounted) {
+                                unawaited(showCustomizePage(host));
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const _SectionLabel('Notificações'),
+                        Material(
+                          color: palette.panel2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: palette.border),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            children: [
+                              SwitchListTile(
+                                key: const Key('settings-notifications'),
+                                value: _config.notificationsEnabled,
+                                onChanged: (value) => setState(() {
+                                  _config = _config.copyWith(
+                                    notificationsEnabled: value,
+                                  );
+                                }),
+                                title: Text(
+                                  'Avisar ao cruzar limites',
+                                  style: TextStyle(
+                                    color: palette.text,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  'Funciona com a janela na bandeja.',
+                                  style: TextStyle(
+                                    color: palette.muted,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                              ),
+                              if (_config.notificationsEnabled) ...[
+                                Divider(height: 1, color: palette.border),
+                                _thresholdSlider(
+                                  key: const Key('settings-warning'),
+                                  label: 'Aviso',
+                                  value: _config.warningThreshold,
+                                  min: 50,
+                                  max: 90,
+                                  onChanged: (value) => setState(() {
+                                    final critical =
+                                        value + 5 > _config.criticalThreshold
+                                        ? value + 5
+                                        : _config.criticalThreshold;
+                                    _config = _config.copyWith(
+                                      warningThreshold: value,
+                                      criticalThreshold: critical.clamp(
+                                        55,
+                                        100,
+                                      ),
+                                    );
+                                  }),
+                                ),
+                                _thresholdSlider(
+                                  key: const Key('settings-critical'),
+                                  label: 'Crítico',
+                                  value: _config.criticalThreshold,
+                                  min: _config.warningThreshold + 5,
+                                  max: 100,
+                                  onChanged: (value) => setState(() {
+                                    _config = _config.copyWith(
+                                      criticalThreshold: value,
+                                    );
+                                  }),
+                                ),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    key: const Key('settings-notify-test'),
+                                    onPressed: () async {
+                                      final ok = await widget.state
+                                          .sendTestNotification();
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            ok
+                                                ? 'Notificação enviada.'
+                                                : 'Notificação indisponível.',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.notifications_active_outlined,
+                                      size: 15,
+                                    ),
+                                    label: const Text(
+                                      'Testar notificação',
+                                      style: TextStyle(fontSize: QdType.meta),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const _SectionLabel('Atualizações'),
+                        Material(
+                          color: palette.panel2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: palette.border),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: SwitchListTile(
+                            key: const Key('settings-check-updates'),
+                            value: _config.checkUpdates,
+                            onChanged: (value) => setState(() {
+                              _config = _config.copyWith(checkUpdates: value);
+                            }),
+                            title: Text(
+                              'Verificar novas versões',
+                              style: TextStyle(
+                                color: palette.text,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Consulta a última release uma vez por dia.',
+                              style: TextStyle(
+                                color: palette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const _SectionLabel('Atualização dos dados'),
                         _choiceWrap<int>(
                           options: _refreshOptions,
                           selected: _refreshValue,
@@ -379,6 +579,58 @@ class _SettingsSheetState extends State<SettingsSheet> {
                     ),
                   )
                 : const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _thresholdSlider({
+    required Key key,
+    required String label,
+    required int value,
+    required int min,
+    required int max,
+    required ValueChanged<int> onChanged,
+  }) {
+    final palette = QdPalette.of(context);
+    final low = min.clamp(0, 99);
+    final high = max.clamp(low + 1, 100);
+    final safe = value.clamp(low, high);
+    final range = high - low;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: Text(
+              label,
+              style: TextStyle(color: palette.muted, fontSize: QdType.small),
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              key: key,
+              value: safe.toDouble(),
+              min: low.toDouble(),
+              max: high.toDouble(),
+              divisions: range > 0 ? range : null,
+              label: '$safe%',
+              onChanged: (next) => onChanged(next.round()),
+            ),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '$safe%',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: palette.text,
+                fontSize: QdType.small,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),

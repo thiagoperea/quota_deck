@@ -8,6 +8,7 @@ class QdPalette extends ThemeExtension<QdPalette> {
     required this.panel,
     required this.panel2,
     required this.border,
+    required this.borderStrong,
     required this.text,
     required this.muted,
     required this.dim,
@@ -21,7 +22,12 @@ class QdPalette extends ThemeExtension<QdPalette> {
   final Color bg;
   final Color panel;
   final Color panel2;
+
+  /// Separadores decorativos (cards, divisórias).
   final Color border;
+
+  /// Bordas de controle (inputs, tracks, chips): contraste ≥ 3:1.
+  final Color borderStrong;
   final Color text;
   final Color muted;
   final Color dim;
@@ -36,9 +42,10 @@ class QdPalette extends ThemeExtension<QdPalette> {
     panel: Color(0xFF171A21),
     panel2: Color(0xFF1D212A),
     border: Color(0xFF2A303C),
+    borderStrong: Color(0xFF626D82),
     text: Color(0xFFE8EBF2),
     muted: Color(0xFF98A1B3),
-    dim: Color(0xFF808A9D),
+    dim: Color(0xFFA8B2C4),
     green: Color(0xFF3DDC97),
     yellow: Color(0xFFF5C451),
     red: Color(0xFFFF6B6B),
@@ -50,13 +57,14 @@ class QdPalette extends ThemeExtension<QdPalette> {
     bg: Color(0xFFE9EEF5),
     panel: Color(0xFFFFFFFF),
     panel2: Color(0xFFFBFCFE),
-    border: Color(0xFFD5DDE8),
+    border: Color(0xFFC9D3E1),
+    borderStrong: Color(0xFF7C8798),
     text: Color(0xFF121826),
     muted: Color(0xFF4E5A6B),
-    dim: Color(0xFF66717F),
-    green: Color(0xFF087F5B),
-    yellow: Color(0xFF8A5A12),
-    red: Color(0xFFC53030),
+    dim: Color(0xFF4A5568),
+    green: Color(0xFF0A6B4E),
+    yellow: Color(0xFF7A4E0A),
+    red: Color(0xFFB42318),
     blue: Color(0xFF1D4ED8),
     purple: Color(0xFF6B46C1),
   );
@@ -70,6 +78,7 @@ class QdPalette extends ThemeExtension<QdPalette> {
     Color? panel,
     Color? panel2,
     Color? border,
+    Color? borderStrong,
     Color? text,
     Color? muted,
     Color? dim,
@@ -83,6 +92,7 @@ class QdPalette extends ThemeExtension<QdPalette> {
     panel: panel ?? this.panel,
     panel2: panel2 ?? this.panel2,
     border: border ?? this.border,
+    borderStrong: borderStrong ?? this.borderStrong,
     text: text ?? this.text,
     muted: muted ?? this.muted,
     dim: dim ?? this.dim,
@@ -101,6 +111,7 @@ class QdPalette extends ThemeExtension<QdPalette> {
       panel: Color.lerp(panel, other.panel, t)!,
       panel2: Color.lerp(panel2, other.panel2, t)!,
       border: Color.lerp(border, other.border, t)!,
+      borderStrong: Color.lerp(borderStrong, other.borderStrong, t)!,
       text: Color.lerp(text, other.text, t)!,
       muted: Color.lerp(muted, other.muted, t)!,
       dim: Color.lerp(dim, other.dim, t)!,
@@ -113,37 +124,52 @@ class QdPalette extends ThemeExtension<QdPalette> {
   }
 }
 
-/// Cores fixas usadas em gradientes de avatar e detalhes.
-abstract final class QdColors {
-  static const bg = Color(0xFF0F1115);
-  static const panel = Color(0xFF171A21);
-  static const panel2 = Color(0xFF1D212A);
-  static const border = Color(0xFF2A303C);
-  static const text = Color(0xFFE8EBF2);
-  static const muted = Color(0xFF98A1B3);
-  static const dim = Color(0xFF808A9D);
-  static const green = Color(0xFF3DDC97);
-  static const yellow = Color(0xFFF5C451);
-  static const red = Color(0xFFFF6B6B);
-  static const blue = Color(0xFF6EA8FE);
-  static const purple = Color(0xFFB197FC);
-}
-
 /// Escala tipográfica única (6 passos).
+///
+/// Piso de 10,5 px: 9,5 px `dim` reprovava AA no tema claro.
 abstract final class QdType {
-  static const micro = 9.5;
-  static const meta = 10.0;
-  static const small = 11.0;
+  static const micro = 10.5;
+  static const meta = 11.0;
+  static const small = 11.5;
   static const body = 12.5;
   static const title = 15.0;
   static const kpi = 22.0;
+
+  /// Números que mudam (%, horários): dígitos de largura fixa evitam
+  /// o "pulo" a cada atualização.
+  static const numeric = <FontFeature>[FontFeature.tabularFigures()];
+}
+
+/// Grade de espaçamento (8 pt, com meios passos para micro-layouts).
+abstract final class QdSpace {
+  static const xs = 2.0;
+  static const sm = 4.0;
+  static const md = 6.0;
+  static const base = 8.0;
+  static const lg = 12.0;
+  static const xl = 16.0;
+  static const xxl = 24.0;
 }
 
 /// Raios de canto padronizados.
 abstract final class QdRadius {
+  static const chip = 6.0;
   static const control = 10.0;
   static const card = 12.0;
   static const dialog = 16.0;
+  static const sheet = 20.0;
+  static const pill = 999.0;
+}
+
+/// Durações curtas para transições de valor. Respeita "reduzir movimento".
+abstract final class QdMotion {
+  static const fast = Duration(milliseconds: 120);
+  static const base = Duration(milliseconds: 180);
+
+  static Duration of(BuildContext context, Duration duration) {
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return reduce ? Duration.zero : duration;
+  }
 }
 
 ThemeData buildDarkTheme() => _buildTheme(Brightness.dark, QdPalette.dark);
@@ -167,7 +193,7 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
         onSurface: palette.text,
         error: palette.red,
         onError: Colors.white,
-        outline: palette.border,
+        outline: palette.borderStrong,
         outlineVariant: palette.border,
         surfaceContainer: palette.panel,
         surfaceContainerHigh: palette.panel2,
@@ -263,8 +289,8 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         foregroundColor: palette.muted,
-        highlightColor: palette.text.withValues(alpha: 0.06),
-        hoverColor: palette.text.withValues(alpha: 0.06),
+        highlightColor: palette.text.withValues(alpha: 0.12),
+        hoverColor: palette.text.withValues(alpha: 0.12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(QdRadius.control),
         ),
@@ -293,15 +319,15 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: palette.border),
+        borderSide: const BorderSide(color: Colors.transparent),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: palette.border),
+        borderSide: BorderSide(color: palette.borderStrong),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: palette.green.withValues(alpha: 0.8)),
+        borderSide: BorderSide(color: palette.green, width: 2),
       ),
     ),
     tooltipTheme: TooltipThemeData(
@@ -322,6 +348,6 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
       selectionColor: palette.green.withValues(alpha: 0.25),
       selectionHandleColor: palette.green,
     ),
-    focusColor: palette.green.withValues(alpha: 0.16),
+    focusColor: palette.green.withValues(alpha: 0.32),
   );
 }

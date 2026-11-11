@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:quota_deck/src/api/mock_api.dart';
+import 'support/fake_api.dart';
 import 'package:quota_deck/src/app.dart';
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
@@ -12,8 +12,9 @@ Future<AppState> _pumpApp(
   required Size size,
   bool empty = false,
   bool onboarded = true,
+  bool failRefresh = false,
   Set<ProviderId>? installed,
-  MockScenario? scenario,
+  FakeScenario? scenario,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -21,10 +22,11 @@ Future<AppState> _pumpApp(
   addTearDown(tester.view.resetDevicePixelRatio);
 
   final state = AppState(
-    MockApi(
+    FakeQuotaApi(
       empty: empty,
       installedProviders: installed,
       scenario: scenario,
+      failRefresh: failRefresh,
       config: AppConfig.defaults().copyWith(
         theme: 'dark',
         refreshSeconds: 0,
@@ -47,6 +49,11 @@ Future<AppState> _pumpApp(
 }
 
 void main() {
+  Future<void> openHeaderMenu(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('header-menu')));
+    await tester.pumpAndSettle();
+  }
+
   test('detecta compact por query string e rota', () {
     expect(isCompactUri(Uri.parse('http://localhost/?compact=1')), isTrue);
     expect(isCompactUri(Uri.parse('http://localhost/compact')), isTrue);
@@ -58,11 +65,12 @@ void main() {
 
     expect(find.byKey(const Key('quota-deck-compact')), findsOneWidget);
     expect(find.byKey(const Key('header-refresh')), findsOneWidget);
-    expect(find.byKey(const Key('header-settings')), findsOneWidget);
+    expect(find.byKey(const Key('header-menu')), findsOneWidget);
+    expect(find.byKey(const Key('header-customize')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-opencode')), findsOneWidget);
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
-    expect(find.text('MAIOR CONSUMO'), findsOneWidget);
-    expect(find.text('DISPONÍVEL'), findsOneWidget);
+    expect(find.text('FOLGA'), findsOneWidget);
+    expect(find.text('PRÓXIMO RESET'), findsOneWidget);
 
     final claudeBottom = tester
         .getBottomLeft(find.byKey(const Key('provider-card-claude')))
@@ -82,12 +90,11 @@ void main() {
     expect(find.byKey(const Key('provider-card-claude')), findsOneWidget);
     expect(
       find.text('fonte: sessão do Claude Desktop (ao vivo)'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Próximos resets'), findsOneWidget);
     expect(find.text('Tendência'), findsOneWidget);
-    expect(find.text('DISPONÍVEL ESTIMADO'), findsOneWidget);
-    expect(find.text('MAIOR CONSUMO AGORA'), findsOneWidget);
+    expect(find.text('FOLGA DA JANELA MAIS APERTADA'), findsOneWidget);
     expect(find.text('PRÓXIMO RESET'), findsOneWidget);
     expect(find.text('Melhor agora'), findsNothing);
     expect(find.text('100% local · sem telemetria'), findsNothing);
@@ -109,14 +116,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mock controls + botões do header cabem em 420', (tester) async {
+  testWidgets('janela de 320px com fonte 1.5 não estoura', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpApp(tester, compact: true, size: const Size(320, 400));
+
+    expect(find.byKey(const Key('quota-deck-compact')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mini avisa quando o dado está velho/após falha', (tester) async {
+    final state = await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(380, 500),
+      failRefresh: true,
+    );
+    await state.refresh();
+    state.setMiniMode(true);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mini-stale-strip')), findsOneWidget);
+    expect(find.text('Tentar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('botões do header cabem em 420', (tester) async {
     await _pumpApp(tester, compact: true, size: const Size(420, 900));
 
     for (final key in const [
-      'mock-controls',
       'header-refresh',
-      'header-wizard',
-      'header-settings',
+      'header-menu',
+      'header-customize',
     ]) {
       final finder = find.byKey(Key(key));
       expect(finder, findsOneWidget);
@@ -145,14 +176,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mock de estados extremos renderiza todos os cards', (
+  testWidgets('estados extremos renderizam todos os cards', (
     tester,
   ) async {
     await _pumpApp(
       tester,
       compact: false,
       size: const Size(1200, 1600),
-      scenario: MockScenario.edgeCases,
+      scenario: FakeScenario.edgeCases,
     );
 
     expect(find.byKey(const Key('provider-card-claude')), findsWidgets);
@@ -160,26 +191,6 @@ void main() {
     expect(find.text('Credencial ausente'), findsWidgets);
     expect(find.text('Não instalado'), findsWidgets);
     expect(find.textContaining('Créditos'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('controles de mock trocam o cenário', (tester) async {
-    final state = await _pumpApp(
-      tester,
-      compact: false,
-      size: const Size(1200, 900),
-    );
-
-    expect(find.byKey(const Key('mock-controls')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('mock-controls')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('mock-sheet')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('mock-scenario-edgeCases')));
-    await tester.pumpAndSettle();
-
-    expect(state.mockApi!.scenario, MockScenario.edgeCases);
-    expect(find.byKey(const Key('provider-card-claude')), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -205,6 +216,7 @@ void main() {
   testWidgets('settings abre a bottom sheet pelo header', (tester) async {
     await _pumpApp(tester, compact: true, size: const Size(420, 900));
 
+    await openHeaderMenu(tester);
     await tester.tap(find.byKey(const Key('header-settings')));
     await tester.pumpAndSettle();
 
@@ -254,7 +266,7 @@ void main() {
       size: const Size(420, 900),
       onboarded: false,
       installed: {ProviderId.opencode, ProviderId.claude},
-      scenario: MockScenario.edgeCases,
+      scenario: FakeScenario.edgeCases,
     );
 
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
@@ -291,6 +303,7 @@ void main() {
   ) async {
     await _pumpApp(tester, compact: false, size: const Size(1200, 900));
 
+    await openHeaderMenu(tester);
     await tester.tap(find.byKey(const Key('header-wizard')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);

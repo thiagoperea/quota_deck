@@ -49,7 +49,7 @@ class QuotaBar extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ColoredBox(color: palette.border.withValues(alpha: 0.8)),
+              ColoredBox(color: palette.borderStrong.withValues(alpha: 0.45)),
               Align(
                 alignment: Alignment.centerLeft,
                 child: FractionallySizedBox(

@@ -11,6 +11,8 @@ Future<void> _pumpCard(
   WidgetTester tester,
   ProviderSnapshot snapshot, {
   VoidCallback? onAuthAction,
+  List<QuotaWindow>? windows,
+  List<QuotaWindow> onDemandWindows = const [],
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -24,6 +26,8 @@ Future<void> _pumpCard(
               snapshot: snapshot,
               onRetry: () {},
               onAuthAction: onAuthAction,
+              windows: windows,
+              onDemandWindows: onDemandWindows,
             ),
           ),
         ),
@@ -177,6 +181,45 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(QuotaBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ProviderCard mostra janelas sob demanda atrás do botão', (
+    tester,
+  ) async {
+    final always = testWindow(id: 'rolling-5h', label: '5 horas', used: 4);
+    final onDemand = testWindow(id: 'weekly', label: 'Semanal (7d)', used: 21);
+    final snapshot = testSnapshot(windows: [always, onDemand]);
+    await _pumpCard(
+      tester,
+      snapshot,
+      windows: [always],
+      onDemandWindows: [onDemand],
+    );
+
+    expect(find.text('5 horas'), findsOneWidget);
+    expect(find.text('Semanal (7d)'), findsNothing);
+    expect(find.text('Mostrar mais (1)'), findsOneWidget);
+
+    await tester.tap(find.text('Mostrar mais (1)'));
+    await tester.pump();
+
+    expect(find.text('Semanal (7d)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ProviderCard avisa quando todas as janelas estão ocultas', (
+    tester,
+  ) async {
+    final snapshot = testSnapshot(
+      windows: [testWindow(id: 'rolling-5h', label: '5 horas', used: 4)],
+    );
+    await _pumpCard(tester, snapshot, windows: const []);
+
+    expect(
+      find.textContaining('Todas as janelas estão ocultas'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

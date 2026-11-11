@@ -38,7 +38,6 @@ class StatusBadge extends StatelessWidget {
       Confidence.none => '',
     };
     final text = label;
-
     return Semantics(
       label: auth
           ? 'Autenticação necessária'
@@ -96,6 +95,23 @@ class StatusBadge extends StatelessWidget {
                 'desatualizado',
                 style: TextStyle(
                   color: palette.muted,
+                  fontSize: QdType.micro,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          if (!stale && !auth && confidence == Confidence.low)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: palette.yellow.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: palette.yellow.withValues(alpha: 0.35)),
+              ),
+              child: Text(
+                'estimado',
+                style: TextStyle(
+                  color: palette.yellow,
                   fontSize: QdType.micro,
                   fontWeight: FontWeight.w500,
                 ),

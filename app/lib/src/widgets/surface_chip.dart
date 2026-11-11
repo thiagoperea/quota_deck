@@ -24,24 +24,50 @@ class SurfaceChip extends StatelessWidget {
         : authenticated!
         ? palette.green
         : palette.yellow;
+    final state = authenticated == null
+        ? ''
+        : authenticated!
+        ? 'conectada'
+        : 'login necessário';
     return Semantics(
-      label: label ?? 'Superfície ${surface.label}',
+      label: label == null
+          ? 'Superfície ${surface.label}${state.isEmpty ? '' : ', $state'}'
+          : '$label${state.isEmpty ? '' : ', $state'}',
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(QdRadius.chip),
           border: Border.all(color: color.withValues(alpha: 0.35)),
         ),
-        child: Text(
-          label ?? surface.label,
-          style: TextStyle(
-            color: color,
-            fontSize: QdType.micro,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (authenticated != null) ...[
+              Icon(
+                authenticated! ? Icons.check : Icons.error_outline,
+                size: 9,
+                color: color,
+              ),
+              const SizedBox(width: 3),
+            ],
+            Flexible(
+              child: Text(
+                label == null
+                    ? '${surface.label}${authenticated == null ? '' : authenticated! ? '' : ' · login'}'
+                    : label!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: QdType.micro,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -3,11 +3,11 @@ import 'dart:math' as math;
 
 import 'package:quota_deck_models/quota_deck_models.dart';
 
-import '../version.dart';
-import 'quota_api.dart';
+import 'package:quota_deck/src/version.dart';
+import 'package:quota_deck/src/api/quota_api.dart';
 
-/// Cenários de mock para validar todos os estados visuais do painel.
-enum MockScenario {
+/// Cenários sintéticos para validar todos os estados visuais do painel.
+enum FakeScenario {
   normal('Normal', 'Quatro provedores com dados realistas.'),
   statuses('Status', 'ok · warning · critical · limited · unknown.'),
   edgeCases(
@@ -27,24 +27,23 @@ enum MockScenario {
   error('Erro inicial', 'Falha ao carregar o resumo.'),
   loading('Carregando', 'Spinner infinito, sem dados.');
 
-  const MockScenario(this.label, this.description);
+  const FakeScenario(this.label, this.description);
 
   final String label;
   final String description;
 }
 
-/// API simulada com dados realistas dos quatro provedores.
+/// API de teste com dados realistas dos quatro provedores.
 ///
-/// Ativada por `--dart-define=QDECK_MOCK=1`. Serve para desenvolver e testar a
-/// UI sem rede e sem credenciais.
-class MockApi implements QuotaApi {
-  MockApi({
+/// Substitui o core nos testes de widget: sem rede e sem credenciais.
+class FakeQuotaApi implements QuotaApi {
+  FakeQuotaApi({
     this.failSummary = false,
     this.failRefresh = false,
     this.failSettings = false,
     this.empty = false,
     this.installedProviders,
-    MockScenario? scenario,
+    FakeScenario? scenario,
     AppConfig? config,
   }) : _config =
            config ??
@@ -53,9 +52,9 @@ class MockApi implements QuotaApi {
              refreshSeconds: 60,
              notificationsEnabled: true,
            ),
-       _scenario = MockScenario.normal {
+       _scenario = FakeScenario.normal {
     if (empty) {
-      _scenario = MockScenario.empty;
+      _scenario = FakeScenario.empty;
     } else if (scenario != null) {
       _scenario = scenario;
     }
@@ -70,12 +69,12 @@ class MockApi implements QuotaApi {
 
   AppConfig _config;
   late SnapshotEnvelope _envelope;
-  MockScenario _scenario;
+  FakeScenario _scenario;
   int _refreshCount = 0;
 
-  MockScenario get scenario => _scenario;
+  FakeScenario get scenario => _scenario;
 
-  void setScenario(MockScenario value) {
+  void setScenario(FakeScenario value) {
     _scenario = value;
     _envelope = _buildEnvelope(DateTime.now().toUtc());
   }
@@ -85,10 +84,10 @@ class MockApi implements QuotaApi {
 
   @override
   Future<SummaryPayload> fetchSummary() async {
-    if (_scenario == MockScenario.loading) {
+    if (_scenario == FakeScenario.loading) {
       return Completer<SummaryPayload>().future;
     }
-    if (failSummary || _scenario == MockScenario.error) {
+    if (failSummary || _scenario == FakeScenario.error) {
       throw const ApiException(
         'Falha simulada ao carregar o resumo. Tente novamente.',
       );
@@ -111,8 +110,8 @@ class MockApi implements QuotaApi {
 
   @override
   Future<List<DetectionResult>> detect() async {
-    if (_scenario == MockScenario.empty ||
-        _scenario == MockScenario.notInstalled) {
+    if (_scenario == FakeScenario.empty ||
+        _scenario == FakeScenario.notInstalled) {
       return [
         for (final id in ProviderId.values)
           DetectionResult.fromSurfaces(
@@ -133,11 +132,11 @@ class MockApi implements QuotaApi {
               surface: ProviderSurface.desktop,
               installed: _isInstalled(id),
               authenticated: _isInstalled(id) && !_hasError(id),
-              version: _isInstalled(id) ? 'mock' : null,
-              location: _isInstalled(id) ? '~/mock/${id.wireName}' : null,
+              version: _isInstalled(id) ? 'fixture' : null,
+              location: _isInstalled(id) ? '~/fixture/${id.wireName}' : null,
               reason: _isInstalled(id)
-                  ? 'Superfície simulada para testes de UI.'
-                  : 'Não instalado (mock).',
+                  ? 'Superfície sintética para testes de UI.'
+                  : 'Não instalado (fixture).',
             ),
             SurfaceState(
               surface: ProviderSurface.cli,
@@ -146,8 +145,8 @@ class MockApi implements QuotaApi {
                   _isInstalled(id) &&
                   id != ProviderId.antigravity &&
                   !_hasError(id),
-              location: _isInstalled(id) ? 'mock-cli' : null,
-              reason: 'CLI simulada.',
+              location: _isInstalled(id) ? 'fixture-cli' : null,
+              reason: 'CLI sintética.',
             ),
           ],
         ),
@@ -155,11 +154,11 @@ class MockApi implements QuotaApi {
   }
 
   bool _isInstalled(ProviderId id) {
-    if (_scenario == MockScenario.empty ||
-        _scenario == MockScenario.notInstalled) {
+    if (_scenario == FakeScenario.empty ||
+        _scenario == FakeScenario.notInstalled) {
       return false;
     }
-    if (_scenario == MockScenario.single) return id == ProviderId.opencode;
+    if (_scenario == FakeScenario.single) return id == ProviderId.opencode;
     return installedProviders?.contains(id) ?? true;
   }
 
@@ -169,10 +168,10 @@ class MockApi implements QuotaApi {
 
   @override
   Future<SnapshotEnvelope> refresh({ProviderId? provider}) async {
-    if (_scenario == MockScenario.loading) {
+    if (_scenario == FakeScenario.loading) {
       return Completer<SnapshotEnvelope>().future;
     }
-    if (failRefresh || _scenario == MockScenario.error) {
+    if (failRefresh || _scenario == FakeScenario.error) {
       throw const ApiException(
         'Falha simulada ao atualizar. Os dados anteriores continuam na tela.',
       );
@@ -302,7 +301,7 @@ class MockApi implements QuotaApi {
   Future<void> close() async {}
 
   SnapshotEnvelope _buildEnvelope(DateTime now) {
-    if (_scenario == MockScenario.empty) {
+    if (_scenario == FakeScenario.empty) {
       return SnapshotEnvelope(
         generatedAt: now,
         results: const [],
@@ -316,7 +315,7 @@ class MockApi implements QuotaApi {
     }
 
     return switch (_scenario) {
-      MockScenario.normal => SnapshotEnvelope(
+      FakeScenario.normal => SnapshotEnvelope(
         generatedAt: now,
         results: [
           _opencode(now).copyWith(
@@ -338,21 +337,21 @@ class MockApi implements QuotaApi {
         ],
         errors: const [],
       ),
-      MockScenario.statuses => _statusEnvelope(now),
-      MockScenario.edgeCases => _edgeEnvelope(now),
-      MockScenario.groups => _groupsEnvelope(now),
-      MockScenario.single => SnapshotEnvelope(
+      FakeScenario.statuses => _statusEnvelope(now),
+      FakeScenario.edgeCases => _edgeEnvelope(now),
+      FakeScenario.groups => _groupsEnvelope(now),
+      FakeScenario.single => SnapshotEnvelope(
         generatedAt: now,
         results: [_opencode(now)],
         errors: const [],
       ),
-      MockScenario.notInstalled => _notInstalledEnvelope(now),
-      MockScenario.empty => SnapshotEnvelope(
+      FakeScenario.notInstalled => _notInstalledEnvelope(now),
+      FakeScenario.empty => SnapshotEnvelope(
         generatedAt: now,
         results: const [],
       ),
       // Os dados não importam para erro/loading: a falha vem do fetchSummary.
-      MockScenario.error || MockScenario.loading => SnapshotEnvelope(
+      FakeScenario.error || FakeScenario.loading => SnapshotEnvelope(
         generatedAt: now,
         results: const [],
       ),
@@ -400,7 +399,7 @@ class MockApi implements QuotaApi {
     String? email,
     required List<QuotaWindow> windows,
     ProviderSurface surface = ProviderSurface.desktop,
-    String source = 'mock',
+    String source = 'fixture',
     String? sourceId,
     bool stale = false,
     Confidence confidence = Confidence.high,
@@ -879,7 +878,7 @@ class MockApi implements QuotaApi {
           state: 'não instalado',
           code: 'NOT_INSTALLED',
           message:
-              '${provider.displayName} não foi encontrado nesta máquina (mock).',
+              '${provider.displayName} não foi encontrado nesta máquina (fixture).',
           source: 'detection',
         ),
     ],

@@ -265,7 +265,7 @@ Fixture: [`../../packages/core/test/fixtures/codex-wham-usage.json`](../../packa
 - Teste de `used_percent > 100`.
 - Teste de epoch segundos vs ms.
 - Teste de 401 e de app-server indisponível.
-- Mock HTTP/MSW + mock JSON-RPC.
+- HTTP simulado/MSW + JSON-RPC simulado.
 - Integração opt-in.
 
 ---

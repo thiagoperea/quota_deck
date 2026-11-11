@@ -12,6 +12,7 @@ import 'support/sample.dart';
 class _FakeAdapter implements ProviderAdapter {
   int calls = 0;
   bool fail = false;
+  bool rateLimit = false;
 
   @override
   ProviderId get id => ProviderId.opencode;
@@ -23,6 +24,14 @@ class _FakeAdapter implements ProviderAdapter {
   @override
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
     calls++;
+    if (rateLimit) {
+      throw const QdeckException(
+        code: QdeckErrorCode.rateLimited,
+        provider: ProviderId.opencode,
+        message: 'slow down',
+        details: {'retryAfterSeconds': 120},
+      );
+    }
     if (fail) {
       throw const QdeckException(
         code: QdeckErrorCode.network,
@@ -41,6 +50,8 @@ void main() {
   late Directory temp;
   late _FakeAdapter adapter;
   late DefaultQuotaService service;
+  late SnapshotCache cache;
+  late DateTime clock;
 
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('qdeck_service_');
@@ -48,15 +59,17 @@ void main() {
     final configStore = ConfigStore(paths.configFile);
     await configStore.save(AppConfig.defaults());
     adapter = _FakeAdapter();
+    clock = DateTime.utc(2026, 11, 8, 12);
+    cache = SnapshotCache();
     service = DefaultQuotaService(
       paths: paths,
-      cache: SnapshotCache(),
+      cache: cache,
       configStore: configStore,
       historyStore: null,
       httpClient: MockClient((_) async => http.Response('{}', 200)),
       processRunner: FakeProcessRunner(),
       env: const {},
-      now: () => DateTime.utc(2026, 11, 8, 12),
+      now: () => clock,
       log: (_) {},
       adapters: [adapter],
     );
@@ -89,5 +102,37 @@ void main() {
     expect(snapshot.stale, isTrue);
     expect(snapshot.errors, isNotEmpty);
     expect(snapshot.windows.first.usedPercent, 10);
+  });
+
+  test('429 aplica backoff e não chama o adapter durante o bloqueio', () async {
+    adapter.rateLimit = true;
+    final first = await service.snapshot();
+    expect(adapter.calls, 1);
+    expect(first.results.first.errors.first.code, 'RATE_LIMITED');
+    final retryAt = parseDate(
+      first.results.first.errors.first.details?['retryAt'],
+    );
+    expect(retryAt, isNotNull);
+    expect(retryAt!.isAfter(DateTime.utc(2026, 11, 8, 12)), isTrue);
+
+    // Refresh manual também respeita o bloqueio (Retry-After de 120 s).
+    final second = await service.refresh();
+    expect(adapter.calls, 1);
+    expect(second.results.first.errors.first.code, 'RATE_LIMITED');
+  });
+
+  test('backoff expira e o próximo fetch volta a funcionar', () async {
+    adapter.rateLimit = true;
+    await service.snapshot();
+    expect(adapter.calls, 1);
+    await service.refresh();
+    expect(adapter.calls, 1);
+
+    clock = clock.add(const Duration(minutes: 3));
+    adapter.rateLimit = false;
+    final after = await service.refresh();
+    expect(adapter.calls, 2);
+    expect(after.results.first.errors, isEmpty);
+    expect(cache.backoffUntil(ProviderId.opencode, now: clock), isNull);
   });
 }

@@ -1,6 +1,6 @@
 import 'package:quota_deck_models/quota_deck_models.dart';
 
-/// Erro amigável para falhas do core ou do mock.
+/// Erro amigável para falhas do core.
 class ApiException implements Exception {
   const ApiException(this.message);
 
@@ -44,7 +44,7 @@ class SummaryPayload {
 }
 
 /// Contrato consumido pela UI. No desktop, [LocalQuotaApi] chama o core
-/// diretamente; nos testes/dev, [MockApi] devolve dados sintéticos.
+/// em um isolate próprio; nos testes, um fake devolve dados sintéticos.
 abstract class QuotaApi {
   Future<SummaryPayload> fetchSummary();
 

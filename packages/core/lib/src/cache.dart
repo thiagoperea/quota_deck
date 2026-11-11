@@ -18,6 +18,7 @@ class SnapshotCache {
   final File? file;
   final Duration ttl;
   final Map<String, CacheEntry> _entries = {};
+  final Map<String, DateTime> _backoff = {};
   bool _dirty = false;
 
   SnapshotCache({this.file, this.ttl = const Duration(seconds: 60)});
@@ -57,6 +58,14 @@ class SnapshotCache {
             ? entry.key.toString()
             : keyOf(decoded);
         _entries[key] = CacheEntry(snapshot: decoded, cachedAt: cachedAt);
+      }
+      _backoff.clear();
+      final backoff = raw['backoff'];
+      if (backoff is Map) {
+        for (final entry in backoff.entries) {
+          final until = parseDate(entry.value);
+          if (until != null) _backoff[entry.key.toString()] = until;
+        }
       }
       _dirty = false;
       return true;
@@ -125,6 +134,24 @@ class SnapshotCache {
     _dirty = true;
   }
 
+  /// Bloqueio ativo de um provedor (ex.: HTTP 429), ou `null` se expirou.
+  DateTime? backoffUntil(ProviderId id, {DateTime? now}) {
+    final until = _backoff[id.wireName];
+    if (until == null) return null;
+    final clock = (now ?? DateTime.now()).toUtc();
+    if (!clock.isBefore(until)) return null;
+    return until;
+  }
+
+  void setBackoff(ProviderId id, DateTime until) {
+    _backoff[id.wireName] = until.toUtc();
+    _dirty = true;
+  }
+
+  void clearBackoff(ProviderId id) {
+    if (_backoff.remove(id.wireName) != null) _dirty = true;
+  }
+
   /// Mantém no máximo 4 entradas por provedor (2 superfícies × fontes comuns).
   void _trim(ProviderId id) {
     final keys =
@@ -151,6 +178,10 @@ class SnapshotCache {
               'snapshot': entry.value.snapshot.toJson(),
             },
         },
+        'backoff': {
+          for (final entry in _backoff.entries)
+            entry.key: formatDate(entry.value),
+        },
       };
       final tmp = File('${f.path}.tmp');
       await tmp.writeAsString(jsonEncode(payload), flush: true);
@@ -175,6 +206,7 @@ class SnapshotCache {
 
   Future<void> clear() async {
     _entries.clear();
+    _backoff.clear();
     _dirty = true;
     final f = file;
     if (f != null && await f.exists()) {

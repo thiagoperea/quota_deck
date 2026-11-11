@@ -131,6 +131,7 @@ class OpenCodeProvider implements ProviderAdapter {
         code: QdeckErrorCode.rateLimited,
         provider: id,
         message: 'Rate limit no endpoint de uso do OpenCode.',
+        details: rateLimitDetails(response.headers),
       );
     }
     if (response.statusCode != 200) {

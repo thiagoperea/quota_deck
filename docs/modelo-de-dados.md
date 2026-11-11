@@ -252,8 +252,14 @@ class AppConfig {
   final bool launchAtLogin;
   final bool allowProbe;            // default false
   final bool allowOAuthRefresh;     // default false
+  final List<String> providerOrder; // vazio = alfabética
+  final Map<String, WindowVisibility> windowVisibility; // provider|windowId
+  final bool checkUpdates;          // default true
 }
 ```
+
+`WindowVisibility`: `always` (padrão), `onDemand` (atrás de “mostrar mais”)
+ou `hidden` (não aparece, mas continua sendo consultada).
 
 Paths:
 
@@ -264,7 +270,7 @@ Paths:
 | Windows | `%APPDATA%\QuotaDeck` |
 | Override | `QDECK_DATA_DIR` |
 
-Arquivos: `cache.json`, `history.db`, `config.json`, `session.json`, `quota-deck.log`.
+Arquivos: `cache.json`, `history.db`, `config.json`, `session.json`, `notifications.json`, `quota-deck.log`.
 Permissões: diretório `0700`; arquivos `0600` quando possível.
 
 ---

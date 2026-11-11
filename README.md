@@ -17,6 +17,16 @@ Ele escaneia o que está instalado (Desktop e CLI), lê a credencial local de ca
 - Histórico local em SQLite com burn rate e ETA.
 - CLI `qdeck` para terminal, scripts e statusline.
 - Cache de 60 s e fallback para o último dado quando a rede falha.
+- Notificações nativas ao cruzar os limites (aviso e crítico, com histerese) e
+  polling em segundo plano para avisar com o app na bandeja.
+- Personalização do painel: ordem dos provedores e janelas **Sempre / Sob
+  demanda / Oculta**, sem parar de consultar as ocultas.
+- Backoff persistido em HTTP 429 (5 min ou `Retry-After`), com contagem para a
+  próxima tentativa e refresh manual bloqueado.
+- Detecção incremental de provedores: só liga o que encontrou, nunca desliga, e
+  pode ser reexecutada pelo menu da bandeja.
+- Ícone da bandeja por severidade (verde/amarelo/vermelho) e tooltip com todos
+  os provedores; aviso discreto de nova versão do GitHub.
 
 ## Instalar
 
@@ -40,25 +50,6 @@ flutter build linux --release
 ```
 
 Os artifacts também são gerados no GitHub Actions (`.app`, `.exe` e bundle Linux).
-
-## Mock de layout
-
-Para validar todos os estados da UI sem credenciais:
-
-```bash
-cd app
-flutter run -d windows --dart-define=QDECK_MOCK=1
-```
-
-O botão de frasco no header (e no mini) abre o seletor de cenários:
-
-- **Normal** — quatro provedores com dados realistas.
-- **Status** — ok, warning, critical, limited e unknown.
-- **Estados de card** — auth ausente/expirado, permissão, erro de schema, stale, sem janelas, não instalado e superfícies Desktop/CLI/IDE.
-- **Grupos e textos longos** — muitas janelas, grupos e rótulos compridos.
-- **Um provedor**, **vazio**, **erro inicial** e **carregando**.
-
-O mesmo seletor alterna entre **mini**, **compacto** e **dashboard**. O modo mock usa uma porta de instância própria, então pode rodar junto com o app instalado.
 
 ## CLI
 
@@ -123,6 +114,8 @@ Detalhes em [`docs/seguranca.md`](docs/seguranca.md).
 - Claude Desktop: o QuotaDeck lê a sessão local do app (safeStorage). Se ela expirar, abra o Claude Desktop e faça login; o Claude Code CLI é opcional.
 - Codex usa `wham/usage` quando o binário `codex` não está no PATH.
 - Tray no Linux depende de um painel com AppIndicator (KDE, Ubuntu com extensão etc.).
+- Notificações usam `local_notifier`: no Windows o toast depende de um atalho no Menu Iniciar com AUMID (criado no primeiro start); no Linux requer `libnotify`; no macOS podem ser bloqueadas em builds sem assinatura.
+- A checagem de atualização consulta a API pública do GitHub (1×/dia) e pode ser desligada nas Configurações.
 
 ## Licença
 

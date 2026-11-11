@@ -7,7 +7,7 @@
 | Flutter 3.47+ / Dart 3.13+ | app, core e CLI |
 | Xcode 27+ | build macOS (macOS 26.6+, Apple Silicon) |
 | Visual Studio Desktop C++ | build Windows |
-| GTK 3, X11, Xi, CMake, Ninja, Clang | build Linux |
+| GTK 3, X11, Xi, libnotify, CMake, Ninja, Clang | build Linux |
 | Node/npm | não é usado |
 
 ```bash
@@ -46,12 +46,6 @@ cd app
 flutter run -d macos      # macOS
 flutter run -d windows    # Windows
 flutter run -d linux      # Linux
-```
-
-Modo mock (sem credenciais, dados sintéticos):
-
-```bash
-flutter run -d macos --dart-define=QDECK_MOCK=1
 ```
 
 O app abre em 420×760. O tray mostra o pior provedor; clique esquerdo alterna a janela, clique direito abre o menu.

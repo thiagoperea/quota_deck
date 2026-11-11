@@ -287,7 +287,7 @@ Cache TTL: 60 s. Endpoint OAuth tem rate limit próprio; não martelar.
 - Fixture sem `seven_day_opus`.
 - Teste de `expiresAt` no passado (não deve chamar rede).
 - Teste de 401.
-- Teste de Keychain negado (mock).
+- Teste de Keychain negado (simulado).
 - Integração opt-in com token válido.
 - Teste de bucket `null` e de `extra_usage`.
 - Teste de `resets_at` com microssegundos/offset.

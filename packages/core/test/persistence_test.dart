@@ -114,6 +114,31 @@ void main() {
     );
   });
 
+  test('cache: backoff de 429 persiste e expira com o relógio', () async {
+    final file = File('${temp.path}/cache.json');
+    final cache = SnapshotCache(file: file);
+    final until = DateTime.utc(2026, 11, 8, 12, 5);
+    cache.setBackoff(ProviderId.codex, until);
+    await cache.save();
+
+    final reloaded = SnapshotCache(file: file);
+    await reloaded.load();
+    expect(
+      reloaded.backoffUntil(
+        ProviderId.codex,
+        now: DateTime.utc(2026, 11, 8, 12, 1),
+      ),
+      until,
+    );
+    expect(
+      reloaded.backoffUntil(
+        ProviderId.codex,
+        now: DateTime.utc(2026, 11, 8, 12, 6),
+      ),
+      isNull,
+    );
+  });
+
   test('doctor expõe checagem de escrita do data dir', () async {
     final paths = AppPaths(temp);
     final service = DefaultQuotaService(

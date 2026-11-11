@@ -50,9 +50,7 @@ Future<void> openDashboardWindow(AppState state) async {
   state.setMiniMode(false);
   state.setWindowActive(true);
   await _unlockSize(_dashboardMinSize);
-  await windowManager.setSize(dashboardWindowSize);
-  await windowManager.center();
-  await ensureWindowOnScreen();
+  await _fitWindow(dashboardWindowSize);
   await _raise();
 }
 
@@ -74,9 +72,7 @@ Future<void> openCompactWindow(AppState state) async {
   state.setMiniMode(false);
   state.setWindowActive(true);
   await _unlockSize(_compactMinSize);
-  await windowManager.setSize(compactWindowSize);
-  await windowManager.center();
-  await ensureWindowOnScreen();
+  await _fitWindow(compactWindowSize);
   await _raise();
 }
 
@@ -146,11 +142,63 @@ Future<void> ensureWindowOnScreen() async {
     final bounds = await windowManager.getBounds();
     final displays = nativeapi.DisplayManager.instance.getAll();
     for (final display in displays) {
-      final displayBounds = display.position.toOffset() & display.size.toSize();
-      if (displayBounds.overlaps(bounds)) return;
+      final work = _workArea(display);
+      if (work.width <= 0 || work.height <= 0) continue;
+      if (!work.overlaps(bounds)) continue;
+      // Além de caber na tela, a janela precisa caber na área útil: em
+      // 1366×768 o dashboard de 1100×800 nascia com o rodapé fora da tela.
+      final size = Size(
+        bounds.width.clamp(320.0, work.width),
+        bounds.height.clamp(320.0, work.height),
+      );
+      final maxLeft = work.left + (work.width - size.width);
+      final maxTop = work.top + (work.height - size.height);
+      final left = bounds.left.clamp(work.left, maxLeft);
+      final top = bounds.top.clamp(work.top, maxTop);
+      if (size.width != bounds.width || size.height != bounds.height) {
+        await windowManager.setSize(size);
+      }
+      if (left != bounds.left || top != bounds.top) {
+        await windowManager.setPosition(Offset(left, top));
+      }
+      return;
     }
     await windowManager.center();
   } catch (_) {
     // Sem displays ou sem plugin: mantém onde está.
+  }
+}
+
+Rect _workArea(nativeapi.Display display) {
+  var work = display.workArea.toRect();
+  if (work.width <= 0 || work.height <= 0) {
+    work = display.position.toOffset() & display.size.toSize();
+  }
+  return work;
+}
+
+/// Abre a janela com o tamanho desejado, preso à área útil do monitor
+/// principal e centralizado nela.
+Future<void> _fitWindow(Size desired) async {
+  try {
+    final manager = nativeapi.DisplayManager.instance;
+    final display = manager.getPrimary();
+    if (display == null) return;
+    final work = _workArea(display);
+    if (work.width <= 0 || work.height <= 0) return;
+    final size = Size(
+      desired.width.clamp(320.0, work.width),
+      desired.height.clamp(320.0, work.height),
+    );
+    await windowManager.setSize(size);
+    await windowManager.setPosition(
+      Offset(
+        work.left + (work.width - size.width) / 2,
+        work.top + (work.height - size.height) / 2,
+      ),
+    );
+  } catch (_) {
+    await windowManager.setSize(desired);
+    await windowManager.center();
   }
 }

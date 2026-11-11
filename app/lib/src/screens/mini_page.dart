@@ -10,7 +10,6 @@ import '../widgets/provider_card.dart';
 import '../widgets/provider_wizard.dart';
 import '../widgets/quota_bar.dart';
 import '../widgets/settings_sheet.dart';
-import '../widgets/mock_controls.dart';
 
 /// Popover compacto aberto pelo clique na bandeja.
 ///
@@ -46,6 +45,12 @@ class MiniPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _Header(state: state),
+                const SizedBox(height: 6),
+                _MiniFreshness(state: state),
+                if (state.update != null) ...[
+                  const SizedBox(height: 8),
+                  _MiniUpdate(state: state),
+                ],
                 const SizedBox(height: 12),
                 Expanded(
                   child: SingleChildScrollView(
@@ -58,7 +63,16 @@ class MiniPage extends StatelessWidget {
                           _MiniEmpty(state: state)
                         else
                           for (final snapshot in state.visibleSnapshots) ...[
-                            _MiniProviderRow(snapshot: snapshot),
+                            _MiniProviderRow(
+                              snapshot: snapshot,
+                              windows: state.windowsFor(
+                                snapshot,
+                                includeOnDemand: false,
+                              ),
+                              onDemandWindows: state.onDemandWindowsFor(
+                                snapshot,
+                              ),
+                            ),
                             const SizedBox(height: 8),
                           ],
                       ],
@@ -71,6 +85,130 @@ class MiniPage extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Faixa de frescor do mini: mostra quando o dado é velho e oferece retry.
+class _MiniFreshness extends StatelessWidget {
+  const _MiniFreshness({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    final problem = state.error != null || state.hasStaleData;
+    final last = state.lastUpdatedAt;
+    final label = last == null
+        ? 'carregando dados'
+        : 'atualizado ${relativeTime(last)}';
+
+    if (!problem) {
+      return Row(
+        children: [
+          Icon(Icons.schedule, size: 11, color: palette.dim),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: palette.dim, fontSize: QdType.micro),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      key: const Key('mini-stale-strip'),
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: palette.yellow.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(QdRadius.chip),
+        border: Border.all(color: palette.yellow.withValues(alpha: 0.32)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 12, color: palette.yellow),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              state.error != null
+                  ? 'Sem atualizar · $label'
+                  : 'Dados antigos · $label',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: palette.yellow, fontSize: QdType.micro),
+            ),
+          ),
+          TextButton(
+            onPressed: state.refreshing
+                ? null
+                : () => unawaited(state.refresh()),
+            style: TextButton.styleFrom(
+              foregroundColor: palette.yellow,
+              minimumSize: const Size(0, 28),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: QdType.micro,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            child: const Text('Tentar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniUpdate extends StatelessWidget {
+  const _MiniUpdate({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QdPalette.of(context);
+    final info = state.update!;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: palette.blue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: palette.blue.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.system_update_alt, size: 13, color: palette.blue),
+          const SizedBox(width: 6),
+          Expanded(
+            child: InkWell(
+              onTap: () => unawaited(state.openUpdate()),
+              child: Text(
+                'v${info.version} disponível · baixar',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: palette.blue,
+                  fontSize: QdType.meta,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Dispensar',
+            onPressed: state.dismissUpdate,
+            icon: const Icon(Icons.close, size: 13),
+            constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+            padding: EdgeInsets.zero,
+          ),
+        ],
       ),
     );
   }
@@ -144,8 +282,6 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        const MockControlsButton(compact: true),
-        const SizedBox(width: 4),
         _IconButton(
           key: const Key('mini-refresh'),
           icon: state.refreshing ? Icons.sync : Icons.refresh_rounded,
@@ -208,10 +344,25 @@ class _IconButton extends StatelessWidget {
   }
 }
 
-class _MiniProviderRow extends StatelessWidget {
-  const _MiniProviderRow({required this.snapshot});
+class _MiniProviderRow extends StatefulWidget {
+  const _MiniProviderRow({
+    required this.snapshot,
+    required this.windows,
+    required this.onDemandWindows,
+  });
 
   final ProviderSnapshot snapshot;
+  final List<QuotaWindow> windows;
+  final List<QuotaWindow> onDemandWindows;
+
+  @override
+  State<_MiniProviderRow> createState() => _MiniProviderRowState();
+}
+
+class _MiniProviderRowState extends State<_MiniProviderRow> {
+  bool _expanded = false;
+
+  ProviderSnapshot get snapshot => widget.snapshot;
 
   bool get _authError => snapshot.errors.any(
     (error) =>
@@ -223,7 +374,10 @@ class _MiniProviderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
-    final windows = sortWindowsForDisplay(snapshot.windows);
+    final windows = sortWindowsForDisplay([
+      ...widget.windows,
+      if (_expanded) ...widget.onDemandWindows,
+    ]);
     final groups = <String?, List<QuotaWindow>>{};
     for (final window in windows) {
       groups.putIfAbsent(window.group, () => []).add(window);
@@ -264,26 +418,41 @@ class _MiniProviderRow extends StatelessWidget {
               ),
               if (snapshot.surface != null) ...[
                 const SizedBox(width: 5),
-                Text(
-                  snapshot.surface!.label,
-                  style: TextStyle(color: palette.dim, fontSize: QdType.micro),
+                Flexible(
+                  child: Text(
+                    snapshot.surface!.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.dim,
+                      fontSize: QdType.micro,
+                    ),
+                  ),
                 ),
               ],
               const Spacer(),
               if (_authError)
-                Text(
-                  'login necessário',
-                  style: TextStyle(
-                    color: palette.yellow,
-                    fontSize: QdType.micro,
+                Flexible(
+                  child: Text(
+                    'login necessário',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.yellow,
+                      fontSize: QdType.micro,
+                    ),
                   ),
                 ),
             ],
           ),
-          if (windows.isEmpty) ...[
+          if (windows.isEmpty && widget.onDemandWindows.isEmpty) ...[
             const SizedBox(height: 5),
             Text(
-              _authError ? 'sem dados locais' : 'sem janelas de quota',
+              _authError
+                  ? 'sem dados locais'
+                  : snapshot.windows.isNotEmpty
+                  ? 'janelas ocultas'
+                  : 'sem janelas de quota',
               style: TextStyle(color: palette.muted, fontSize: QdType.micro),
             ),
           ] else
@@ -310,6 +479,28 @@ class _MiniProviderRow extends StatelessWidget {
                 _MiniWindowRow(window: entry.value[i]),
               ],
             ],
+          if (widget.onDemandWindows.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: Key('mini-ondemand-${snapshot.provider.name}'),
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 13,
+                ),
+                label: Text(
+                  _expanded
+                      ? 'Mostrar menos'
+                      : 'mais ${widget.onDemandWindows.length}',
+                  style: const TextStyle(fontSize: QdType.micro),
+                ),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+              ),
+            ),
         ],
       ),
     );

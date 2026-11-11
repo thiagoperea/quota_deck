@@ -227,6 +227,7 @@ class CodexProvider implements ProviderAdapter {
         code: QdeckErrorCode.rateLimited,
         provider: id,
         message: 'Rate limit no endpoint de uso do Codex.',
+        details: rateLimitDetails(response.headers),
       );
     }
     if (response.statusCode != 200) {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:quota_deck/src/api/mock_api.dart';
+import 'support/fake_api.dart';
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck/src/theme.dart';
 import 'package:quota_deck/src/widgets/settings_sheet.dart';
@@ -9,7 +9,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 
 Future<AppState> _state({bool failSettings = false}) async {
   final state = AppState(
-    MockApi(
+    FakeQuotaApi(
       failSettings: failSettings,
       config: AppConfig.defaults().copyWith(theme: 'dark', refreshSeconds: 0),
     ),

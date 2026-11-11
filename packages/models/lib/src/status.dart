@@ -124,10 +124,17 @@ String relativeTime(DateTime? value, {DateTime? now}) {
   return past ? 'há $amount' : 'em $amount';
 }
 
+/// Percentual no formato pt-BR, com uma casa decimal e vírgula.
+///
+/// Acima de 99,9% (e abaixo de 100%) o valor é preso em `99,9` para não
+/// anunciar "100%" quando ainda resta quota. Só `>= 100` mostra `100`.
 String formatPercent(double value) {
-  final v = clampPercent(value);
-  if (v == v.roundToDouble()) return v.toStringAsFixed(0);
-  return v.toStringAsFixed(1);
+  if (value.isNaN) return '0';
+  final raw = value.clamp(0, 100).toDouble();
+  if (raw >= 100) return '100';
+  final rounded = raw >= 99.95 ? 99.9 : (raw * 10).roundToDouble() / 10;
+  if (rounded == rounded.roundToDouble()) return rounded.toStringAsFixed(0);
+  return rounded.toStringAsFixed(1).replaceAll('.', ',');
 }
 
 String shortEmail(String? email) {

@@ -12,6 +12,9 @@ class AppPaths {
   File get configFile => File(p.join(dataDir.path, 'config.json'));
   File get sessionFile => File(p.join(dataDir.path, 'session.json'));
   File get logFile => File(p.join(dataDir.path, 'quota-deck.log'));
+  File get notificationsFile =>
+      File(p.join(dataDir.path, 'notifications.json'));
+  File get updateFile => File(p.join(dataDir.path, 'update.json'));
 
   static AppPaths forPlatform({
     Map<String, String>? env,

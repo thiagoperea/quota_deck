@@ -134,6 +134,39 @@ enum ProviderSurface {
   }
 }
 
+/// Como uma janela de quota aparece no painel e no mini.
+///
+/// `always` = sempre visível, `onDemand` = atrás de um "mostrar mais",
+/// `hidden` = não aparece (mas continua sendo consultada).
+enum WindowVisibility {
+  always,
+  onDemand,
+  hidden;
+
+  String get wireName => switch (this) {
+    WindowVisibility.always => 'always',
+    WindowVisibility.onDemand => 'onDemand',
+    WindowVisibility.hidden => 'hidden',
+  };
+
+  String get label => switch (this) {
+    WindowVisibility.always => 'Sempre',
+    WindowVisibility.onDemand => 'Sob demanda',
+    WindowVisibility.hidden => 'Oculta',
+  };
+
+  static WindowVisibility fromWire(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    for (final visibility in WindowVisibility.values) {
+      if (visibility.name.toLowerCase() == v ||
+          visibility.wireName.toLowerCase() == v) {
+        return visibility;
+      }
+    }
+    return WindowVisibility.always;
+  }
+}
+
 enum DoctorStatus {
   ok,
   warn,
@@ -619,6 +652,19 @@ class DoctorCheck {
     'message': message,
     if (details != null) 'details': details,
   };
+
+  factory DoctorCheck.fromJson(Map<String, dynamic> json) => DoctorCheck(
+    provider:
+        ProviderId.tryParse(json['provider']?.toString()) ??
+        ProviderId.opencode,
+    id: (json['id'] ?? '').toString(),
+    label: (json['label'] ?? '').toString(),
+    status: DoctorStatus.fromWire(json['status']?.toString()),
+    message: (json['message'] ?? '').toString(),
+    details: json['details'] is Map
+        ? (json['details'] as Map).cast<String, dynamic>()
+        : null,
+  );
 }
 
 class HistorySample {
@@ -677,6 +723,19 @@ class HistorySummary {
     'burnRatePerHour': burnRatePerHour,
     'etaHours': etaHours,
   };
+
+  factory HistorySummary.fromJson(Map<String, dynamic> json) => HistorySummary(
+    provider:
+        ProviderId.tryParse(json['provider']?.toString()) ??
+        ProviderId.opencode,
+    windowId: (json['windowId'] ?? '').toString(),
+    samples: ((json['samples'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => HistorySample.fromJson(item.cast<String, dynamic>()))
+        .toList(growable: false),
+    burnRatePerHour: _asDouble(json['burnRatePerHour']),
+    etaHours: json['etaHours'] == null ? null : _asDouble(json['etaHours']),
+  );
 }
 
 class AppConfig {
@@ -697,6 +756,15 @@ class AppConfig {
   final bool allowOAuthRefresh;
   final bool onboardingCompleted;
 
+  /// Ordem dos provedores no painel. Vazio = ordem alfabética.
+  final List<String> providerOrder;
+
+  /// Visibilidade por janela, chave `provider|windowId`.
+  final Map<String, WindowVisibility> windowVisibility;
+
+  /// Verifica releases do GitHub no start e a cada 24 h.
+  final bool checkUpdates;
+
   const AppConfig({
     this.schemaVersion = 1,
     required this.providers,
@@ -714,6 +782,9 @@ class AppConfig {
     this.allowProbe = false,
     this.allowOAuthRefresh = false,
     this.onboardingCompleted = false,
+    this.providerOrder = const [],
+    this.windowVisibility = const {},
+    this.checkUpdates = true,
   });
 
   factory AppConfig.defaults() => const AppConfig(
@@ -782,6 +853,11 @@ class AppConfig {
       onboardingCompleted: json['onboardingCompleted'] == null
           ? defaults.onboardingCompleted
           : _asBool(json['onboardingCompleted']),
+      providerOrder: _asStringList(json['providerOrder']),
+      windowVisibility: _asVisibilityMap(json['windowVisibility']),
+      checkUpdates: json['checkUpdates'] == null
+          ? defaults.checkUpdates
+          : _asBool(json['checkUpdates']),
     );
   }
 
@@ -802,12 +878,44 @@ class AppConfig {
     'allowProbe': allowProbe,
     'allowOAuthRefresh': allowOAuthRefresh,
     'onboardingCompleted': onboardingCompleted,
+    'providerOrder': providerOrder,
+    'windowVisibility': {
+      for (final entry in windowVisibility.entries)
+        entry.key: entry.value.wireName,
+    },
+    'checkUpdates': checkUpdates,
   };
 
   bool isEnabled(ProviderId id) => providers[id.wireName] ?? true;
 
   bool isSurfaceEnabled(ProviderId id, ProviderSurface surface) =>
       surfaces['${id.wireName}.${surface.wireName}'] ?? true;
+
+  /// Posição do provedor na ordem personalizada (999 = fora da lista).
+  int providerRank(ProviderId id) {
+    final index = providerOrder.indexOf(id.wireName);
+    return index < 0 ? 999 : index;
+  }
+
+  String _windowKey(ProviderId id, String windowId) =>
+      '${id.wireName}|$windowId';
+
+  WindowVisibility visibilityFor(ProviderId id, String windowId) =>
+      windowVisibility[_windowKey(id, windowId)] ?? WindowVisibility.always;
+
+  AppConfig withWindowVisibility(
+    ProviderId id,
+    String windowId,
+    WindowVisibility visibility,
+  ) => copyWith(
+    windowVisibility: {
+      ...windowVisibility,
+      _windowKey(id, windowId): visibility,
+    },
+  );
+
+  AppConfig clearCustomization() =>
+      copyWith(providerOrder: const [], windowVisibility: const {});
 
   AppConfig copyWith({
     Map<String, bool>? providers,
@@ -825,6 +933,9 @@ class AppConfig {
     bool? allowProbe,
     bool? allowOAuthRefresh,
     bool? onboardingCompleted,
+    List<String>? providerOrder,
+    Map<String, WindowVisibility>? windowVisibility,
+    bool? checkUpdates,
   }) => AppConfig(
     schemaVersion: schemaVersion,
     providers: providers ?? this.providers,
@@ -842,6 +953,9 @@ class AppConfig {
     allowProbe: allowProbe ?? this.allowProbe,
     allowOAuthRefresh: allowOAuthRefresh ?? this.allowOAuthRefresh,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+    providerOrder: providerOrder ?? this.providerOrder,
+    windowVisibility: windowVisibility ?? this.windowVisibility,
+    checkUpdates: checkUpdates ?? this.checkUpdates,
   );
 }
 
@@ -906,4 +1020,24 @@ bool _asBool(dynamic value) {
   if (value is bool) return value;
   final s = value?.toString().toLowerCase();
   return s == 'true' || s == '1' || s == 'yes';
+}
+
+List<String> _asStringList(dynamic value) {
+  if (value is! List) return const [];
+  return [
+    for (final item in value)
+      if (item != null && item.toString().trim().isNotEmpty)
+        item.toString().trim(),
+  ];
+}
+
+Map<String, WindowVisibility> _asVisibilityMap(dynamic value) {
+  if (value is! Map) return const {};
+  final result = <String, WindowVisibility>{};
+  for (final entry in value.entries) {
+    final key = entry.key?.toString() ?? '';
+    if (key.trim().isEmpty) continue;
+    result[key] = WindowVisibility.fromWire(entry.value?.toString());
+  }
+  return result;
 }

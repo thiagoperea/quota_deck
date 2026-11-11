@@ -130,7 +130,16 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparklinePainter oldDelegate) =>
-      oldDelegate.values != values ||
+      !_sameValues(oldDelegate.values, values) ||
       oldDelegate.color != color ||
       oldDelegate.guideColor != guideColor;
+
+  static bool _sameValues(List<double> a, List<double> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }

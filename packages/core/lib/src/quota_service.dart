@@ -217,6 +217,10 @@ class DefaultQuotaService implements QuotaService {
         detection.reason ?? 'Não encontrado nesta máquina.',
       );
     }
+    final blockedUntil = cache.backoffUntil(adapter.id, now: now());
+    if (blockedUntil != null) {
+      return _backedOff(adapter.id, blockedUntil);
+    }
     if (!noCache) {
       final cached = cache.get(
         adapter.id,
@@ -229,8 +233,28 @@ class DefaultQuotaService implements QuotaService {
 
     final ProviderSnapshot snapshot;
     try {
-      snapshot = await adapter.read(ctx).timeout(const Duration(seconds: 40));
+      snapshot = await adapter.read(ctx).timeout(const Duration(seconds: 12));
     } on QdeckException catch (e) {
+      if (e.code == QdeckErrorCode.rateLimited) {
+        final seconds = _retryAfterSeconds(e) ?? 300;
+        if (seconds > 0) {
+          final until = now().add(Duration(seconds: seconds));
+          cache.setBackoff(adapter.id, until);
+          return _fallbackOrError(
+            adapter.id,
+            QdeckException(
+              code: e.code,
+              provider: e.provider,
+              message: e.message,
+              details: {
+                ...?e.details,
+                'retryAt': formatDate(until),
+                'retryAfterSeconds': seconds,
+              },
+            ),
+          );
+        }
+      }
       return _fallbackOrError(adapter.id, e);
     } on TimeoutException {
       return _fallbackOrError(
@@ -253,6 +277,7 @@ class DefaultQuotaService implements QuotaService {
     }
 
     cache.put(snapshot);
+    cache.clearBackoff(adapter.id);
     try {
       historyStore?.appendSnapshot(snapshot);
     } catch (e) {
@@ -284,7 +309,7 @@ class DefaultQuotaService implements QuotaService {
     if (stale != null) {
       return stale.copyWith(
         stale: true,
-        errors: [...stale.errors, error.toInfo()],
+        errors: _mergeError(stale.errors, error.toInfo()),
       );
     }
     return ProviderSnapshot(
@@ -296,6 +321,71 @@ class DefaultQuotaService implements QuotaService {
       confidence: Confidence.none,
       errors: [error.toInfo()],
     );
+  }
+
+  /// Devolve o último snapshot bom sem chamar a rede enquanto o backoff durar.
+  ProviderSnapshot _backedOff(ProviderId id, DateTime until) {
+    final remaining = until.difference(now());
+    final seconds = remaining.isNegative ? 0 : remaining.inSeconds;
+    final info = QdeckException(
+      code: QdeckErrorCode.rateLimited,
+      provider: id,
+      message: 'Rate limit: nova tentativa em ${_humanEta(remaining)}.',
+      details: {'retryAt': formatDate(until), 'retrySeconds': seconds},
+    ).toInfo();
+    final stale = cache.getStale(id);
+    if (stale != null) {
+      return stale.copyWith(
+        stale: true,
+        errors: _mergeError(stale.errors, info),
+      );
+    }
+    return ProviderSnapshot(
+      provider: id,
+      account: AccountInfo(label: id.displayName),
+      windows: const [],
+      source: 'backoff',
+      fetchedAt: now(),
+      confidence: Confidence.none,
+      errors: [info],
+    );
+  }
+
+  /// Mantém no máximo um erro por código, para não crescer a cada polling.
+  static List<QdeckErrorInfo> _mergeError(
+    List<QdeckErrorInfo> errors,
+    QdeckErrorInfo info,
+  ) => [...errors.where((error) => error.code != info.code), info];
+
+  static int? _retryAfterSeconds(QdeckException error) {
+    final details = error.details;
+    if (details == null) return null;
+    for (final key in const [
+      'retryAfterSeconds',
+      'retry_after_seconds',
+      'retryAfter',
+      'retry_after',
+    ]) {
+      final value = details[key];
+      if (value is num) return value.toInt();
+      final parsed = int.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    final retryAt = parseDate(details['retryAt']);
+    if (retryAt != null) {
+      return retryAt.difference(DateTime.now().toUtc()).inSeconds;
+    }
+    return null;
+  }
+
+  static String _humanEta(Duration remaining) {
+    final seconds = remaining.isNegative ? 0 : remaining.inSeconds;
+    if (seconds < 60) return '${seconds}s';
+    final minutes = (seconds / 60).ceil();
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours h' : '$hours h $rest min';
   }
 
   @override

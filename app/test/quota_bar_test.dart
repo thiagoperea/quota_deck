@@ -60,4 +60,14 @@ void main() {
     );
     expect(fraction.widthFactor, 1);
   });
+
+  testWidgets('QuotaBar expõe valor acessível com vírgula pt-BR', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pumpBar(tester, used: 42.5);
+    final node = tester.getSemantics(find.byType(QuotaBar));
+    expect(node.label, contains('42,5 por cento usado'));
+    handle.dispose();
+  });
 }
