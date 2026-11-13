@@ -20,6 +20,14 @@ class FakeQuotaService implements QuotaService {
   ];
 
   int snapshotCalls = 0;
+  bool lastIncludeDisabled = false;
+
+  /// Simula provedores desligados na config: somem do envelope e respeitam
+  /// `includeDisabled`.
+  Set<ProviderId> disabledProviders = {};
+
+  /// Faz o snapshot lançar na N-ésima chamada (para encerrar o `watch`).
+  int throwOnSnapshotCall = 0;
   int refreshCalls = 0;
   int doctorCalls = 0;
   int historyCalls = 0;
@@ -35,11 +43,31 @@ class FakeQuotaService implements QuotaService {
   Future<SnapshotEnvelope> snapshot({
     Set<ProviderId>? providers,
     bool noCache = false,
+    bool includeDisabled = false,
   }) async {
     snapshotCalls++;
+    if (throwOnSnapshotCall > 0 && snapshotCalls >= throwOnSnapshotCall) {
+      throw const QdeckException(
+        code: QdeckErrorCode.network,
+        provider: ProviderId.opencode,
+        message: 'offline',
+      );
+    }
     lastProviders = providers;
     lastNoCache = noCache;
-    return envelope;
+    lastIncludeDisabled = includeDisabled;
+    if (includeDisabled || disabledProviders.isEmpty) return envelope;
+    final selected = (providers ?? ProviderId.values.toSet()).difference(
+      disabledProviders,
+    );
+    return SnapshotEnvelope(
+      results: [
+        for (final result in envelope.results)
+          if (selected.contains(result.provider)) result,
+      ],
+      errors: envelope.errors,
+      generatedAt: envelope.generatedAt,
+    );
   }
 
   @override
@@ -203,7 +231,7 @@ void main() {
   test('version imprime a versão', () async {
     final code = await cli().run(['version']);
     expect(code, QdeckExitCode.ok);
-    expect(out.toString(), contains('qdeck 0.5.0'));
+    expect(out.toString(), contains('qdeck $cliVersion'));
     expect(err.toString(), isEmpty);
   });
 
@@ -289,6 +317,65 @@ void main() {
   });
 
   test(
+    'provider desabilitado avisa e retorna 5; include-disabled força',
+    () async {
+      service.disabledProviders.add(ProviderId.codex);
+      service.config = service.config.copyWith(
+        providers: {...service.config.providers, 'codex': false},
+      );
+
+      expect(
+        await cli().run(['show', '--provider', 'codex', '--no-color']),
+        QdeckExitCode.partial,
+      );
+      expect(err.toString(), contains('desabilitado'));
+      expect(err.toString(), contains('--include-disabled'));
+      expect(service.lastIncludeDisabled, isFalse);
+
+      err.clear();
+      out.clear();
+      expect(
+        await cli().run([
+          'show',
+          '--provider',
+          'codex',
+          '--include-disabled',
+          '--no-color',
+        ]),
+        QdeckExitCode.ok,
+      );
+      expect(service.lastIncludeDisabled, isTrue);
+      expect(err.toString(), isNot(contains('desabilitado')));
+    },
+  );
+
+  test('watch em pipe não escreve sequência de limpeza ANSI', () async {
+    service.throwOnSnapshotCall = 2;
+    final code = await cli().run(['watch', '--interval', '5']);
+
+    expect(code, QdeckExitCode.network);
+    expect(service.snapshotCalls, 2);
+    expect(out.toString(), isNot(contains('\x1b[2J')));
+    expect(out.toString(), contains('Atualiza a cada 5s'));
+  });
+
+  test('watch --no-clear não limpa a tela nem em terminal', () async {
+    service.throwOnSnapshotCall = 2;
+    final code = await cli(terminal: true)
+        .run(['watch', '--interval', '5', '--no-clear']);
+
+    expect(code, QdeckExitCode.network);
+    expect(out.toString(), isNot(contains('\x1b[2J')));
+  });
+
+  test('watch em terminal limpa a tela entre ciclos', () async {
+    service.throwOnSnapshotCall = 2;
+    // O clear sai antes do snapshot; a falha encerra o laço no 2º ciclo.
+    await cli(terminal: true).run(['watch', '--interval', '5']);
+    expect(out.toString(), contains('\x1b[2J'));
+  });
+
+  test(
     'provider aceita vírgula e repetição; no-cache e ttl são repassados',
     () async {
       var code = await cli().run([
@@ -358,6 +445,52 @@ void main() {
     out.clear();
     code = await cli().run(['doctor']);
     expect(code, QdeckExitCode.partial);
+  });
+
+  test('doctor --json serializa checks e respeita desabilitados', () async {
+    service.config = service.config.copyWith(
+      providers: {...service.config.providers, 'codex': false},
+    );
+    service.doctorChecks = [
+      const DoctorCheck(
+        provider: ProviderId.opencode,
+        id: 'db',
+        label: 'Banco',
+        status: DoctorStatus.ok,
+        message: 'ok',
+      ),
+      const DoctorCheck(
+        provider: ProviderId.codex,
+        id: 'auth',
+        label: 'auth.json',
+        status: DoctorStatus.fail,
+        message: 'quebrado',
+      ),
+    ];
+
+    final code = await cli().run(['doctor', '--json']);
+    expect(code, QdeckExitCode.ok);
+    final decoded = jsonDecode(out.toString()) as Map<String, dynamic>;
+    final checks = decoded['checks'] as List<dynamic>;
+    expect(checks, hasLength(1));
+    expect((checks.single as Map)['provider'], 'opencode');
+    expect(decoded['ok'], isTrue);
+  });
+
+  test('doctor aceita --no-color e --data-dir', () async {
+    service.doctorChecks = const [
+      DoctorCheck(
+        provider: ProviderId.opencode,
+        id: 'db',
+        label: 'Banco',
+        status: DoctorStatus.ok,
+        message: 'ok',
+      ),
+    ];
+    final code = await cli(terminal: true)
+        .run(['doctor', '--no-color', '--data-dir', temp.path]);
+    expect(code, QdeckExitCode.ok);
+    expect(out.toString(), isNot(contains('\x1b[')));
   });
 
   test('history valida opções e imprime resumo', () async {

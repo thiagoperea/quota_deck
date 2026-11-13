@@ -91,7 +91,7 @@ class QdeckCli {
       case 'json':
         return _runShow(root, command, asJson: true);
       case 'doctor':
-        return _runDoctor(root);
+        return _runDoctor(root, command);
       case 'history':
         return _runHistory(root, command);
       case 'settings':
@@ -129,6 +129,7 @@ class QdeckCli {
       final providers = _parseProviders(command['provider'] as List<String>);
       final ttl = _readTtl(command);
       final noCache = command['no-cache'] == true;
+      final includeDisabled = command['include-disabled'] == true;
       final color = _useColor(noColor: command['no-color'] == true);
 
       return await _withService(
@@ -139,7 +140,19 @@ class QdeckCli {
           final envelope = await service.snapshot(
             providers: providers,
             noCache: noCache,
+            includeDisabled: includeDisabled,
           );
+          final config = await service.getConfig();
+          final missing = _disabledProviders(providers, config);
+          if (missing.isNotEmpty && !includeDisabled) {
+            for (final provider in missing) {
+              err.writeln(
+                '${provider.displayName} está desabilitado nas configurações '
+                '(qdeck settings). Use --include-disabled para consultar '
+                'mesmo assim.',
+              );
+            }
+          }
           if (asJson) {
             out.writeln(
               const JsonEncoder.withIndent('  ').convert(envelope.toJson()),
@@ -147,7 +160,11 @@ class QdeckCli {
           } else {
             out.writeln(formatSnapshot(envelope, color: color));
           }
-          return exitCodeForEnvelope(envelope);
+          final code = exitCodeForEnvelope(envelope);
+          if (missing.isNotEmpty && !includeDisabled) {
+            return QdeckExitCode.partial;
+          }
+          return code;
         },
       );
     } on FormatException catch (error) {
@@ -156,16 +173,35 @@ class QdeckCli {
     }
   }
 
-  Future<int> _runDoctor(ArgResults root) async {
+  Future<int> _runDoctor(ArgResults root, ArgResults command) async {
     return _withService(
       _paths(root),
       verbose: _globalFlag(root, 'verbose'),
       body: (service) async {
-        final checks = await service.doctor();
-        out.writeln(formatDoctor(checks, color: _useColor()));
-        return checks.any((check) => check.status == DoctorStatus.fail)
-            ? QdeckExitCode.partial
-            : QdeckExitCode.ok;
+        final config = await service.getConfig();
+        // Check de provedor desligado não deve reprovar o diagnóstico.
+        final checks = (await service.doctor())
+            .where((check) => config.isEnabled(check.provider))
+            .toList(growable: false);
+        final failures = checks.any(
+          (check) => check.status == DoctorStatus.fail,
+        );
+        if (command['json'] == true) {
+          out.writeln(
+            const JsonEncoder.withIndent('  ').convert({
+              'checks': [for (final check in checks) check.toJson()],
+              'ok': !failures,
+            }),
+          );
+        } else {
+          out.writeln(
+            formatDoctor(
+              checks,
+              color: _useColor(noColor: command['no-color'] == true),
+            ),
+          );
+        }
+        return failures ? QdeckExitCode.partial : QdeckExitCode.ok;
       },
     );
   }
@@ -239,17 +275,26 @@ class QdeckCli {
     try {
       final providers = _parseProviders(command['provider'] as List<String>);
       final color = _useColor(noColor: command['no-color'] == true);
+      // Limpar a tela só faz sentido num terminal; em pipe isso injeta ANSI no
+      // log e quebra `qdeck watch | grep`.
+      final clearScreen = stdoutHasTerminal && command['no-clear'] != true;
 
       return await _withService(
         _paths(root),
         verbose: _globalFlag(root, 'verbose'),
         body: (service) async {
+          var first = true;
           while (true) {
             final envelope = await service.snapshot(
               providers: providers,
               noCache: true,
             );
-            out.writeln('\x1b[2J\x1b[H');
+            if (clearScreen) {
+              out.writeln('\x1b[2J\x1b[H');
+            } else if (!first) {
+              out.writeln();
+            }
+            first = false;
             out.writeln(formatSnapshot(envelope, color: color));
             out.writeln('\nAtualiza a cada ${interval}s · Ctrl+C para sair');
             await Future<void>.delayed(Duration(seconds: interval));
@@ -379,6 +424,18 @@ class QdeckCli {
     return root[name] == true;
   }
 
+  /// Provedores pedidos explicitamente que estão desligados na configuração.
+  List<ProviderId> _disabledProviders(
+    Set<ProviderId>? requested,
+    AppConfig config,
+  ) {
+    if (requested == null || requested.isEmpty) return const [];
+    return [
+      for (final provider in requested)
+        if (!config.isEnabled(provider)) provider,
+    ];
+  }
+
   Set<ProviderId>? _parseProviders(List<String> values) {
     if (values.isEmpty) return null;
     final providers = <ProviderId>{};
@@ -472,6 +529,11 @@ class QdeckCli {
         valueHelp: 'segundos',
         help: 'TTL do cache somente nesta execução.',
       )
+      ..addFlag(
+        'include-disabled',
+        negatable: false,
+        help: 'Consulta também provedores desligados nas configurações.',
+      )
       ..addFlag('no-color', negatable: false, help: 'Desabilita cores ANSI.')
       ..addFlag('help', abbr: 'h', negatable: false, help: 'Mostra ajuda.');
     if (!alias) {
@@ -482,7 +544,10 @@ class QdeckCli {
   void _addDoctorCommand(ArgParser root) {
     final command = root.addCommand('doctor');
     _addGlobalOptions(command);
-    command.addFlag('help', abbr: 'h', negatable: false, help: 'Mostra ajuda.');
+    command
+      ..addFlag('json', negatable: false, help: 'Saída JSON.')
+      ..addFlag('no-color', negatable: false, help: 'Desabilita cores ANSI.')
+      ..addFlag('help', abbr: 'h', negatable: false, help: 'Mostra ajuda.');
   }
 
   void _addHistoryCommand(ArgParser root) {
@@ -525,6 +590,11 @@ class QdeckCli {
         help: 'Intervalo entre atualizações (>= 5).',
       )
       ..addFlag('no-color', negatable: false, help: 'Desabilita cores ANSI.')
+      ..addFlag(
+        'no-clear',
+        negatable: false,
+        help: 'Não limpa a tela entre atualizações.',
+      )
       ..addFlag('help', abbr: 'h', negatable: false, help: 'Mostra ajuda.');
   }
 

@@ -10,6 +10,9 @@ dart pub global activate --source path .
 qdeck show
 ```
 
+O shim fica em `~/.pub-cache/bin` (precisa estar no `PATH`). Para conferir:
+`which qdeck && qdeck version`.
+
 Ou:
 
 ```bash
@@ -20,11 +23,12 @@ dart run bin/qdeck.dart show
 
 ```text
 qdeck show [--provider id] [--json] [--no-cache] [--ttl s] [--no-color]
+           [--include-disabled]
 qdeck json
 qdeck doctor
 qdeck history --provider id --window id [--hours 24]
 qdeck settings [--json]
-qdeck watch [--provider id] [--interval 60] [--no-color]
+qdeck watch [--provider id] [--interval 60] [--no-color] [--no-clear]
 qdeck statusline
 qdeck version
 ```

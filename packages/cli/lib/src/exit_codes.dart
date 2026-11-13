@@ -51,4 +51,5 @@ int _exitForCode(String code) {
 bool _isAuthCode(String code) =>
     code == 'AUTH_MISSING' ||
     code == 'AUTH_EXPIRED' ||
-    code == 'PERMISSION_DENIED';
+    code == 'PERMISSION_DENIED' ||
+    code == 'CREDENTIAL_UNREADABLE';
