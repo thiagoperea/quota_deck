@@ -38,6 +38,7 @@ class _FakeQuotaService implements QuotaService {
   Future<SnapshotEnvelope> snapshot({
     Set<ProviderId>? providers,
     bool noCache = false,
+    bool includeDisabled = false,
   }) async => _envelope();
 
   @override

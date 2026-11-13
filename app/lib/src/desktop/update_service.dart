@@ -20,6 +20,10 @@ class UpdateInfo {
 /// Nunca lança: falhas de rede, timeout, status diferente de 200 ou JSON
 /// inválido resultam em `null`.
 class UpdateService {
+  /// Só abrimos/aceitamos links de release do repositório oficial.
+  static const _allowedHosts = {'github.com', 'www.github.com'};
+  static const _releasePathPrefix = '/thiagoperea/quota_deck/';
+
   UpdateService({HttpClient? client, Uri? endpoint})
     // Parâmetro público, campo privado.
     // ignore: prefer_initializing_formals
@@ -78,6 +82,9 @@ class UpdateService {
     final url = decoded['html_url'];
     if (tag is! String || url is! String || url.trim().isEmpty) return null;
 
+    final safeUrl = validReleaseUrl(url);
+    if (safeUrl == null) return null;
+
     final latest = _normalizeVersion(tag);
     if (latest.isEmpty || !isNewer(latest, currentVersion)) return null;
 
@@ -85,7 +92,23 @@ class UpdateService {
     final notes = rawNotes is String && rawNotes.trim().isNotEmpty
         ? _truncate(rawNotes.trim())
         : null;
-    return UpdateInfo(version: latest, url: url, notes: notes);
+    return UpdateInfo(version: latest, url: safeUrl, notes: notes);
+  }
+
+  /// Aceita apenas `https://github.com/thiagoperea/quota_deck/...`.
+  ///
+  /// A resposta do GitHub (e qualquer proxy no caminho) não deve conseguir
+  /// abrir URL arbitrária no SO — no Windows isso ia para o `cmd /c start`.
+  static String? validReleaseUrl(String? raw) {
+    final trimmed = (raw ?? '').trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return null;
+    if (uri.scheme != 'https') return null;
+    if (!_allowedHosts.contains(uri.host.toLowerCase())) return null;
+    if (!uri.path.startsWith(_releasePathPrefix)) return null;
+    if (uri.userInfo.isNotEmpty) return null;
+    return uri.toString();
   }
 
   static String _truncate(String value) =>
@@ -137,17 +160,16 @@ class UpdateService {
   ///
   /// Retorna `true` se o processo foi iniciado.
   Future<bool> openExternal(String url) async {
-    final target = url.trim();
-    if (target.isEmpty) return false;
+    final target = validReleaseUrl(url);
+    if (target == null) return false;
     try {
       if (Platform.isWindows) {
-        // O primeiro '' é o título da janela exigido pelo `start`.
-        await Process.start('cmd', [
-          '/c',
-          'start',
-          '',
+        // `rundll32` abre no navegador padrão sem passar por um shell, então
+        // metacaracteres da URL não viram comando.
+        await Process.start('rundll32', [
+          'url.dll,FileProtocolHandler',
           target,
-        ], runInShell: true);
+        ]);
         return true;
       }
       if (Platform.isMacOS) {

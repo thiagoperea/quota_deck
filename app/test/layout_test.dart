@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
 import 'support/fake_api.dart';
+
 import 'package:quota_deck/src/app.dart';
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
@@ -141,6 +143,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('header compacto mostra a idade do dado', (tester) async {
+    await _pumpApp(tester, compact: true, size: const Size(420, 900));
+
+    expect(find.byKey(const Key('header-age')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('KPI empilha em 320px com fonte ampliada', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpApp(tester, compact: true, size: const Size(320, 520));
+
+    final folgaBottom = tester.getBottomLeft(find.text('FOLGA')).dy;
+    final resetTop = tester.getTopLeft(find.text('PRÓXIMO RESET')).dy;
+    expect(
+      resetTop,
+      greaterThan(folgaBottom),
+      reason: 'os KPIs devem empilhar para não truncar',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('botões do header cabem em 420', (tester) async {
     await _pumpApp(tester, compact: true, size: const Size(420, 900));
 
@@ -176,9 +200,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('estados extremos renderizam todos os cards', (
-    tester,
-  ) async {
+  testWidgets('estados extremos renderizam todos os cards', (tester) async {
     await _pumpApp(
       tester,
       compact: false,
@@ -238,6 +260,44 @@ void main() {
     expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
     expect(find.text('Configurar provedores'), findsOneWidget);
     expect(find.text('Tudo pronto'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('erro de carga não abre o assistente por cima do erro', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      onboarded: false,
+      scenario: FakeScenario.error,
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsNothing);
+    expect(
+      find.textContaining('Falha simulada ao carregar o resumo'),
+      findsWidgets,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('fechar o assistente marca o onboarding como concluído', (
+    tester,
+  ) async {
+    final state = await _pumpApp(
+      tester,
+      compact: true,
+      size: const Size(420, 900),
+      onboarded: false,
+    );
+
+    expect(find.byKey(const Key('provider-wizard')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wizard-close')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('provider-wizard')), findsNothing);
+    expect(state.config.onboardingCompleted, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -326,6 +386,22 @@ void main() {
 
     expect(find.byKey(const Key('provider-card-codex')), findsNothing);
     expect(find.byKey(const Key('provider-card-opencode')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('resets com o mesmo rótulo mostram o grupo', (tester) async {
+    await _pumpApp(
+      tester,
+      compact: false,
+      size: const Size(1200, 900),
+      scenario: FakeScenario.edgeCases,
+    );
+
+    expect(
+      find.textContaining('GEMINI MODELS'),
+      findsWidgets,
+      reason: 'grupo precisa aparecer para desambiguar "5 horas"',
+    );
     expect(tester.takeException(), isNull);
   });
 }

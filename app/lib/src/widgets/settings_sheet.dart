@@ -9,6 +9,7 @@ import '../app.dart';
 import '../screens/customize_page.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'provider_wizard.dart';
 
 Future<void> showSettingsSheet(BuildContext context) {
   final state = context.read<AppState>();
@@ -63,6 +64,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   void _setTheme(String value) {
+    // Snackbar antigo continuaria com a paleta anterior.
+    ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
     setState(() => _config = _config.copyWith(theme: value));
     widget.state.applyThemePreview(value);
   }
@@ -205,14 +208,48 @@ class _SettingsSheetState extends State<SettingsSheet> {
                           clipBehavior: Clip.antiAlias,
                           child: Column(
                             children: [
-                              for (var i = 0; i < ProviderId.values.length; i++)
+                              for (
+                                var i = 0;
+                                i < _installedProviders.length;
+                                i++
+                              )
                                 _providerTile(
-                                  ProviderId.values[i],
+                                  _installedProviders[i],
                                   showDivider: i > 0,
+                                ),
+                              if (_installedProviders.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: Text(
+                                    'Nenhum provedor detectado nesta máquina.',
+                                  ),
                                 ),
                             ],
                           ),
                         ),
+                        if (_missingProviders.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Não instalado: '
+                                  '${_missingProviders.map((p) => p.displayName).join(', ')}',
+                                  style: TextStyle(
+                                    color: palette.muted,
+                                    fontSize: QdType.micro,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                key: const Key('settings-open-wizard'),
+                                onPressed: () =>
+                                    unawaited(showProviderWizard(context)),
+                                child: const Text('Abrir assistente'),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         const _SectionLabel('Painel'),
                         Material(
@@ -637,20 +674,50 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  bool _isInstalled(ProviderId provider) {
+    final detection = widget.state.detectionFor(provider);
+    // Enquanto a detecção não chegou, não esconder nada.
+    if (detection == null) return true;
+    return detection.installedSurfaces.isNotEmpty;
+  }
+
+  /// Resumo em uma linha, sem "Desktop (conectado) · CLI (conectado)".
   String _surfaceSummary(ProviderId provider) {
     final detection = widget.state.detectionFor(provider);
     if (detection == null || detection.surfaces.isEmpty) {
-      return 'Detectando superfícies…';
+      return 'Detectando…';
     }
     final installed = detection.installedSurfaces;
     if (installed.isEmpty) return 'Não instalado';
+    final allConnected = installed.every((s) => s.authenticated);
+    if (installed.length > 1 && allConnected) {
+      final labels = installed.map((s) => s.surface.label).toList();
+      final last = labels.removeLast();
+      return '${labels.join(', ')} e $last conectados';
+    }
     return installed
         .map(
-          (s) =>
-              '${s.surface.label} (${s.authenticated ? 'conectado' : 'login'})',
+          (s) => s.authenticated
+              ? '${s.surface.label} conectado'
+              : '${s.surface.label} sem login',
         )
         .join(' · ');
   }
+
+  /// Instalados **ou** ligados: um provider ligado aparece no painel, então
+  /// precisa continuar desligável aqui mesmo sem estar instalado.
+  bool _isListed(ProviderId provider) =>
+      _isInstalled(provider) || _config.isEnabled(provider);
+
+  List<ProviderId> get _installedProviders => [
+    for (final provider in ProviderId.values)
+      if (_isListed(provider)) provider,
+  ];
+
+  List<ProviderId> get _missingProviders => [
+    for (final provider in ProviderId.values)
+      if (!_isListed(provider)) provider,
+  ];
 
   Widget _providerTile(ProviderId provider, {required bool showDivider}) {
     final palette = QdPalette.of(context);
@@ -672,7 +739,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
           subtitle: Text(
             _surfaceSummary(provider),
-            style: TextStyle(color: palette.muted, fontSize: 10),
+            style: TextStyle(color: palette.muted, fontSize: QdType.meta),
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),

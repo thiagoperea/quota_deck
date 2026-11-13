@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+
 import 'support/fake_api.dart';
+
 import 'package:quota_deck/src/api/quota_api.dart';
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
@@ -76,6 +78,51 @@ class _GatedApi implements QuotaApi {
 
   @override
   Future<void> close() async {}
+}
+
+/// Detecção diz "autenticado" mas a leitura falha por login (caso real do
+/// Codex): a UI precisa mostrar o erro, não o check verde.
+class _AuthMismatchApi extends FakeQuotaApi {
+  @override
+  Future<List<DetectionResult>> detect() async => [
+    for (final id in ProviderId.values)
+      DetectionResult.fromSurfaces(
+        provider: id,
+        surfaces: const [
+          SurfaceState(
+            surface: ProviderSurface.desktop,
+            installed: true,
+            authenticated: true,
+          ),
+        ],
+      ),
+  ];
+
+  @override
+  Future<SummaryPayload> fetchSummary() async {
+    final base = await super.fetchSummary();
+    return SummaryPayload(
+      envelope: SnapshotEnvelope(
+        generatedAt: base.envelope.generatedAt,
+        results: [
+          for (final result in base.envelope.results)
+            result.provider == ProviderId.codex
+                ? result.copyWith(
+                    surface: ProviderSurface.desktop,
+                    errors: const [
+                      QdeckErrorInfo(
+                        code: 'AUTH_EXPIRED',
+                        message: 'Codex retornou 401.',
+                      ),
+                    ],
+                  )
+                : result,
+        ],
+      ),
+      config: base.config,
+      meta: base.meta,
+    );
+  }
 }
 
 void main() {
@@ -321,4 +368,21 @@ void main() {
     expect(state.refreshing, isFalse);
     expect(state.error, isNull);
   });
+
+  test(
+    'detecção não contradiz a leitura: superfície com erro vira sem login',
+    () async {
+      final state = AppState(_AuthMismatchApi());
+      await state.initialize();
+
+      final codex = state.detectionFor(ProviderId.codex);
+      expect(codex, isNotNull);
+      expect(codex!.authenticated, isFalse);
+      expect(codex.surfaces.first.authenticated, isFalse);
+      expect(codex.surfaces.first.reason, contains('Login necessário'));
+
+      final opencode = state.detectionFor(ProviderId.opencode);
+      expect(opencode!.authenticated, isTrue);
+    },
+  );
 }

@@ -263,8 +263,17 @@ ThemeData _buildTheme(Brightness brightness, QdPalette palette) {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: palette.panel,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: palette.panel2,
+      // Ação ("Desfazer") sem cor herdava contraste ~1,6:1 no tema claro.
+      actionTextColor: palette.blue,
+      closeIconColor: palette.muted,
       contentTextStyle: textTheme.bodyMedium?.copyWith(color: palette.text),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       behavior: SnackBarBehavior.floating,

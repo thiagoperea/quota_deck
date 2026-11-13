@@ -207,7 +207,12 @@ class _SeenWindow {
 }
 
 class _Crossing {
-  const _Crossing(this.snapshot, this.window, this.used, {required this.critical});
+  const _Crossing(
+    this.snapshot,
+    this.window,
+    this.used, {
+    required this.critical,
+  });
 
   final ProviderSnapshot snapshot;
   final QuotaWindow window;

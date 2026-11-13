@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
 import 'support/fake_api.dart';
+
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck/src/theme.dart';
 import 'package:quota_deck/src/widgets/settings_sheet.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
-Future<AppState> _state({bool failSettings = false}) async {
+Future<AppState> _state({
+  bool failSettings = false,
+  Set<ProviderId>? installed,
+}) async {
   final state = AppState(
     FakeQuotaApi(
       failSettings: failSettings,
+      installedProviders: installed,
       config: AppConfig.defaults().copyWith(theme: 'dark', refreshSeconds: 0),
     ),
   );
   await state.initialize();
+  await state.detectProviders();
   return state;
 }
 
@@ -107,5 +114,26 @@ void main() {
     expect(find.byKey(const Key('settings-save')), findsOneWidget);
 
     state.dispose();
+  });
+
+  testWidgets('lista só provedores detectados e resume em uma linha', (
+    tester,
+  ) async {
+    final state = await _state(installed: {ProviderId.opencode});
+    await state.saveSettings(
+      state.config.copyWith(providers: {'codex': false, 'claude': false}),
+    );
+    await _pumpSheet(tester, state);
+
+    expect(find.byKey(const Key('settings-provider-opencode')), findsOneWidget);
+    expect(find.byKey(const Key('settings-provider-codex')), findsNothing);
+    expect(find.byKey(const Key('settings-provider-claude')), findsNothing);
+    expect(
+      find.textContaining('Não instalado:'),
+      findsOneWidget,
+      reason: 'não detectados aparecem só como nota',
+    );
+    expect(find.textContaining('conectado'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

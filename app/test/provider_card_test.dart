@@ -13,6 +13,7 @@ Future<void> _pumpCard(
   VoidCallback? onAuthAction,
   List<QuotaWindow>? windows,
   List<QuotaWindow> onDemandWindows = const [],
+  bool forceStale = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -28,6 +29,7 @@ Future<void> _pumpCard(
               onAuthAction: onAuthAction,
               windows: windows,
               onDemandWindows: onDemandWindows,
+              forceStale: forceStale,
             ),
           ),
         ),
@@ -220,6 +222,18 @@ void main() {
       find.textContaining('Todas as janelas estão ocultas'),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('falha de atualização marca o card como desatualizado', (
+    tester,
+  ) async {
+    final snapshot = testSnapshot(
+      windows: [testWindow(id: 'rolling-5h', label: 'Rolling 5h', used: 4)],
+    );
+    await _pumpCard(tester, snapshot, forceStale: true);
+
+    expect(find.text('desatualizado'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

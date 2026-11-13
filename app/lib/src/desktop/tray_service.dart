@@ -25,24 +25,32 @@ class TrayService with TrayListener, WindowListener {
   final AppState state;
   bool _initialized = false;
   bool _quitting = false;
+  bool _trayReady = false;
   bool _closeHintShown = false;
   QuotaStatus? _iconStatus;
 
   Future<void> initialize() async {
+    // O fechamento da janela nunca encerra o app: escondemos para a bandeja.
+    // Isso vale mesmo que a bandeja falhe, para não sobrar processo invisível.
     windowManager.addListener(this);
-    trayManager.addListener(this);
-
-    await trayManager.setIcon(
-      Platform.isMacOS
-          ? 'assets/tray/tray_template.png'
-          : 'assets/tray/tray_ok.png',
-      isTemplate: Platform.isMacOS,
-      iconSize: 18,
-    );
-    await _updateTooltip();
-    await _rebuildMenu();
-    // Só sequestra o fechamento depois que o tray está funcional.
     await windowManager.setPreventClose(true);
+
+    try {
+      trayManager.addListener(this);
+      await trayManager.setIcon(
+        Platform.isMacOS
+            ? 'assets/tray/tray_template.png'
+            : 'assets/tray/tray_ok.png',
+        isTemplate: Platform.isMacOS,
+        iconSize: 18,
+      );
+      await _rebuildMenu();
+      _trayReady = true;
+      await _updateTooltip();
+    } catch (error) {
+      // Sem bandeja o app continua utilizável como janela; fechar encerra.
+      debugPrint('Tray indisponível: $error');
+    }
     state.addListener(_onState);
     _initialized = true;
   }
@@ -65,6 +73,7 @@ class TrayService with TrayListener, WindowListener {
   }
 
   Future<void> _updateTooltip() async {
+    if (!_trayReady) return;
     if (!_initialized && !state.hasData) return;
     final snapshots = state.visibleSnapshots;
     final buffer = StringBuffer('QuotaDeck');
@@ -148,6 +157,7 @@ class TrayService with TrayListener, WindowListener {
   static bool _isAuthErrorCode(QdeckErrorInfo error) =>
       error.code == 'AUTH_EXPIRED' ||
       error.code == 'AUTH_MISSING' ||
+      error.code == 'CREDENTIAL_UNREADABLE' ||
       error.code == 'PERMISSION_DENIED';
 
   void _onState() {
@@ -186,9 +196,14 @@ class TrayService with TrayListener, WindowListener {
 
   @override
   void onWindowClose() {
-    if (!_quitting) {
-      unawaited(_hideWithHint());
+    if (_quitting) return;
+    if (!_trayReady) {
+      // Sem bandeja não há como reabrir: encerra de forma explícita em vez de
+      // deixar um processo invisível.
+      unawaited(_quit());
+      return;
     }
+    unawaited(_hideWithHint());
   }
 
   Future<void> _toggle() async {
@@ -297,11 +312,12 @@ class TrayService with TrayListener, WindowListener {
   }
 
   Future<void> _quit() async {
+    if (_quitting) return;
     _quitting = true;
     await windowManager.setPreventClose(false);
     state.removeListener(_onState);
     await state.shutdown();
-    if (_initialized) {
+    if (_trayReady) {
       await trayManager.destroy();
     }
     await windowManager.destroy();
@@ -311,9 +327,11 @@ class TrayService with TrayListener, WindowListener {
   void dispose() {
     if (!_initialized) return;
     state.removeListener(_onState);
-    trayManager.removeListener(this);
     windowManager.removeListener(this);
-    unawaited(trayManager.destroy());
+    if (_trayReady) {
+      trayManager.removeListener(this);
+      unawaited(trayManager.destroy());
+    }
     _initialized = false;
   }
 }

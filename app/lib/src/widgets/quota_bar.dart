@@ -60,13 +60,17 @@ class QuotaBar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: fillColor,
                       borderRadius: BorderRadius.circular(height),
-                      boxShadow: [
-                        BoxShadow(
-                          color: fillColor.withValues(alpha: 0.35),
-                          blurRadius: 6,
-                          spreadRadius: -2,
-                        ),
-                      ],
+                      // Largura zero + sombra = ponto colorido no início da
+                      // barra vazia.
+                      boxShadow: fraction <= 0.001
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: fillColor.withValues(alpha: 0.35),
+                                blurRadius: 6,
+                                spreadRadius: -2,
+                              ),
+                            ],
                     ),
                   ),
                 ),

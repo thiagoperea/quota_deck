@@ -315,10 +315,8 @@ Future<void> _coreWorkerMain(List<Object?> args) async {
   host.send(requests.sendPort);
 
   QuotaService? service;
-  Future<QuotaService> resolve() async =>
-      service ??= await DefaultQuotaService.create(
-        paths: AppPaths(Directory(dataDir)),
-      );
+  Future<QuotaService> resolve() async => service ??=
+      await DefaultQuotaService.create(paths: AppPaths(Directory(dataDir)));
 
   await for (final message in requests) {
     if (message is! Map) continue;
@@ -360,9 +358,7 @@ Future<Map<String, dynamic>> _dispatch(
     case 'detect':
       final detections = await core.detect();
       return {
-        'detections': [
-          for (final detection in detections) detection.toJson(),
-        ],
+        'detections': [for (final detection in detections) detection.toJson()],
       };
     case 'doctor':
       final checks = await core.doctor();

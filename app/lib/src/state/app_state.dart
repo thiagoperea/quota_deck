@@ -243,6 +243,11 @@ class AppState extends ChangeNotifier {
         snapshot,
   ];
 
+  /// Momento da última coleta (envelope). É o que o header mostra: o dado mais
+  /// antigo pode ser um histórico de 40 dias de um provider, o que não significa
+  /// que o app não atualizou.
+  DateTime? get lastRefreshAt => _envelope?.generatedAt;
+
   /// Momento do dado mais antigo exibido. Evita dizer "atualizado agora"
   /// quando parte dos provedores veio do cache.
   DateTime? get lastUpdatedAt {
@@ -275,7 +280,19 @@ class AppState extends ChangeNotifier {
       }
     }
     resets.sort((a, b) => a.window.resetsAt!.compareTo(b.window.resetsAt!));
-    return resets.take(limit).toList(growable: false);
+    // O mesmo reset aparece em grupos diferentes do Antigravity com o mesmo
+    // rótulo ("5 horas"): mostra uma vez só.
+    final seen = <String>{};
+    final unique = <UpcomingReset>[];
+    for (final reset in resets) {
+      final key =
+          '${reset.snapshot.provider.wireName}:${reset.window.label}:'
+          '${reset.window.resetsAt!.toIso8601String()}';
+      if (!seen.add(key)) continue;
+      unique.add(reset);
+      if (unique.length >= limit) break;
+    }
+    return unique;
   }
 
   UpcomingReset? get nextReset {
@@ -310,6 +327,7 @@ class AppState extends ChangeNotifier {
     try {
       final summary = await _api.fetchSummary();
       _envelope = summary.envelope;
+      _reconcileSurfacesWithRead();
       _config = summary.config;
       _meta = summary.meta;
       _error = null;
@@ -353,6 +371,59 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> retry() => initialize(force: true);
+
+  static bool _isAuthCode(String code) =>
+      code == 'AUTH_MISSING' ||
+      code == 'AUTH_EXPIRED' ||
+      code == 'PERMISSION_DENIED' ||
+      code == 'CREDENTIAL_UNREADABLE';
+
+  /// A detecção diz "instalado e autenticado" mesmo quando a leitura falhou por
+  /// login. Aqui a leitura manda: a superfície que falhou aparece sem login em
+  /// todas as telas (Configurações, assistente, chips).
+  void _reconcileSurfacesWithRead() {
+    final envelope = _envelope;
+    if (envelope == null || _detections.isEmpty) return;
+    final failed = <ProviderId, ProviderSurface?>{};
+    for (final result in envelope.results) {
+      if (result.errors.any((error) => _isAuthCode(error.code))) {
+        failed[result.provider] = result.surface;
+      }
+    }
+    if (failed.isEmpty) return;
+
+    var changed = false;
+    final updated = <DetectionResult>[];
+    for (final detection in _detections) {
+      if (!failed.containsKey(detection.provider)) {
+        updated.add(detection);
+        continue;
+      }
+      final failedSurface = failed[detection.provider];
+      var detectionChanged = false;
+      final surfaces = <SurfaceState>[];
+      for (final surface in detection.surfaces) {
+        final matchesSurface =
+            failedSurface == null || failedSurface == surface.surface;
+        if (surface.authenticated && matchesSurface) {
+          detectionChanged = true;
+          surfaces.add(
+            surface.copyWith(
+              authenticated: false,
+              reason: 'Login necessário (a última leitura falhou).',
+            ),
+          );
+        } else {
+          surfaces.add(surface);
+        }
+      }
+      changed = changed || detectionChanged;
+      updated.add(
+        detectionChanged ? detection.copyWith(surfaces: surfaces) : detection,
+      );
+    }
+    if (changed) _detections = updated;
+  }
 
   Future<void>? _refreshFuture;
   bool _refreshDirty = false;
@@ -406,6 +477,7 @@ class AppState extends ChangeNotifier {
       final envelope = await _api.refresh(provider: provider);
       if (_disposed) return;
       _envelope = envelope;
+      _reconcileSurfacesWithRead();
       _error = null;
       _lastBackgroundRefresh = DateTime.now();
       _safeNotify();
@@ -414,8 +486,7 @@ class AppState extends ChangeNotifier {
     } on ApiException catch (error) {
       _error = error.message;
     } catch (_) {
-      _error =
-          'Não foi possível atualizar as quotas. Os dados anteriores continuam na tela.';
+      _error = 'Não foi possível atualizar as quotas. Os dados anteriores continuam na tela.';
     }
   }
 
@@ -558,6 +629,7 @@ class AppState extends ChangeNotifier {
     _safeNotify();
     try {
       _detections = await _api.detect();
+      _reconcileSurfacesWithRead();
       final installed = <ProviderId>{
         for (final detection in _detections)
           if (detection.detected) detection.provider,
@@ -738,6 +810,7 @@ class AppState extends ChangeNotifier {
     (error) =>
         error.code == 'AUTH_EXPIRED' ||
         error.code == 'AUTH_MISSING' ||
+        error.code == 'CREDENTIAL_UNREADABLE' ||
         error.code == 'PERMISSION_DENIED',
   );
 

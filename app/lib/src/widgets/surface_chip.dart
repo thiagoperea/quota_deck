@@ -55,7 +55,11 @@ class SurfaceChip extends StatelessWidget {
             Flexible(
               child: Text(
                 label == null
-                    ? '${surface.label}${authenticated == null ? '' : authenticated! ? '' : ' · login'}'
+                    ? '${surface.label}${authenticated == null
+                          ? ''
+                          : authenticated!
+                          ? ''
+                          : ' · login'}'
                     : label!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

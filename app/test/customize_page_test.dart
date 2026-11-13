@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
 import 'support/fake_api.dart';
+
 import 'package:quota_deck/src/screens/customize_page.dart';
 import 'package:quota_deck/src/state/app_state.dart';
 import 'package:quota_deck/src/theme.dart';

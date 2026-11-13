@@ -31,13 +31,23 @@ class _CustomizePageState extends State<CustomizePage> {
   Future<void> _queue = Future<void>.value();
 
   bool get _hasCustomization =>
-      _config.providerOrder.isNotEmpty ||
-      _config.windowVisibility.isNotEmpty;
+      _config.providerOrder.isNotEmpty || _config.windowVisibility.isNotEmpty;
 
   void _apply(AppConfig next) {
     setState(() => _config = next);
     _queue = _queue.then((_) async {
       final saved = await widget.state.saveSettings(next);
+      if (saved && mounted) {
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        messenger
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Personalização salva.'),
+              duration: Duration(milliseconds: 1400),
+            ),
+          );
+      }
       if (!saved && mounted) {
         final reason = widget.state.error ?? 'Não foi possível salvar.';
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -53,7 +63,8 @@ class _CustomizePageState extends State<CustomizePage> {
     });
   }
 
-  void _reset() {    final previous = _config;
+  void _reset() {
+    final previous = _config;
     _apply(_config.clearCustomization());
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger?.hideCurrentSnackBar();
@@ -61,7 +72,10 @@ class _CustomizePageState extends State<CustomizePage> {
       SnackBar(
         content: const Text('Ordem e visibilidade restauradas.'),
         duration: const Duration(seconds: 5),
-        action: SnackBarAction(label: 'Desfazer', onPressed: () => _apply(previous)),
+        action: SnackBarAction(
+          label: 'Desfazer',
+          onPressed: () => _apply(previous),
+        ),
       ),
     );
   }
@@ -118,7 +132,10 @@ class _CustomizePageState extends State<CustomizePage> {
               child: Center(
                 child: Text(
                   'Salvando…',
-                  style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: QdType.micro,
+                  ),
                 ),
               ),
             ),

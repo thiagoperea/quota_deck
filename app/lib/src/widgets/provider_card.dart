@@ -63,6 +63,7 @@ class ProviderCard extends StatefulWidget {
     this.onOpenCustomize,
     this.windows,
     this.onDemandWindows = const [],
+    this.forceStale = false,
   });
 
   final ProviderSnapshot snapshot;
@@ -80,6 +81,10 @@ class ProviderCard extends StatefulWidget {
   /// Janelas atrás do "mostrar mais".
   final List<QuotaWindow> onDemandWindows;
 
+  /// Marca os dados como antigos mesmo que o snapshot não diga isso (falha de
+  /// atualização com dados antigos na tela).
+  final bool forceStale;
+
   @override
   State<ProviderCard> createState() => _ProviderCardState();
 }
@@ -95,10 +100,13 @@ class _ProviderCardState extends State<ProviderCard> {
 
   List<QuotaWindow> get _alwaysWindows => widget.windows ?? snapshot.windows;
 
+  bool get _stale => snapshot.stale || widget.forceStale;
+
   bool get _isAuthError => snapshot.errors.any(
     (error) =>
         error.code == 'AUTH_EXPIRED' ||
         error.code == 'AUTH_MISSING' ||
+        error.code == 'CREDENTIAL_UNREADABLE' ||
         error.code == 'PERMISSION_DENIED',
   );
 
@@ -106,6 +114,7 @@ class _ProviderCardState extends State<ProviderCard> {
     for (final error in snapshot.errors) {
       if (error.code == 'AUTH_EXPIRED' ||
           error.code == 'AUTH_MISSING' ||
+          error.code == 'CREDENTIAL_UNREADABLE' ||
           error.code == 'PERMISSION_DENIED') {
         return error;
       }
@@ -132,20 +141,19 @@ class _ProviderCardState extends State<ProviderCard> {
     final palette = QdPalette.of(context);
     final borderColor = _isAuthError
         ? palette.yellow.withValues(alpha: 0.45)
+        : _isNotInstalled
+        ? palette.border
         : _otherError != null
         ? palette.red.withValues(alpha: 0.4)
         : palette.border;
-    final cardGradient = _isAuthError
-        ? LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [palette.yellow.withValues(alpha: 0.08), palette.panel2],
+    // Cor sólida (não gradiente): gradiente com alfa baixo vira um véu cinza
+    // no Impeller e derruba o contraste do tema claro.
+    final cardColor = _isAuthError
+        ? Color.alphaBlend(
+            palette.yellow.withValues(alpha: 0.06),
+            palette.panel,
           )
-        : LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [palette.text.withValues(alpha: 0.022), palette.panel2],
-          );
+        : palette.panel;
 
     return Semantics(
       container: true,
@@ -154,14 +162,14 @@ class _ProviderCardState extends State<ProviderCard> {
         key: Key('provider-card-${snapshot.provider.name}'),
         padding: EdgeInsets.all(compact ? 11 : 12),
         decoration: BoxDecoration(
-          gradient: cardGradient,
+          color: cardColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: borderColor),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Header(snapshot: snapshot, compact: compact),
+            _Header(snapshot: snapshot, compact: compact, stale: _stale),
             if (_isNotInstalled) ...[
               const SizedBox(height: 9),
               _NotInstalledPanel(
@@ -226,11 +234,7 @@ class _ProviderCardState extends State<ProviderCard> {
                 ),
               ),
             ] else if (_isNotInstalled) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Ative o assistente para instalar ou conectar este provedor.',
-                style: TextStyle(color: palette.muted, fontSize: QdType.small),
-              ),
+              // O painel acima já explica o estado; repetir aqui poluía o card.
             ] else if (!snapshot.hasError) ...[
               const SizedBox(height: 8),
               Row(
@@ -286,7 +290,7 @@ class _ProviderCardState extends State<ProviderCard> {
                 ),
               ),
             ],
-            if (snapshot.stale ||
+            if (_stale ||
                 snapshot.hasError ||
                 snapshot.confidence != Confidence.high) ...[
               const SizedBox(height: 6),
@@ -392,10 +396,15 @@ class _ProviderCardState extends State<ProviderCard> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.snapshot, required this.compact});
+  const _Header({
+    required this.snapshot,
+    required this.compact,
+    required this.stale,
+  });
 
   final ProviderSnapshot snapshot;
   final bool compact;
+  final bool stale;
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +465,7 @@ class _Header extends StatelessWidget {
             child: StatusBadge(
               status: snapshot.worstWindow?.status ?? QuotaStatus.unknown,
               confidence: snapshot.confidence,
-              stale: snapshot.stale,
+              stale: stale,
               auth: snapshot.errors.any(
                 (error) =>
                     error.code == 'AUTH_EXPIRED' ||
@@ -488,7 +497,8 @@ class _WindowRow extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: '${window.label}: $used por cento usado, restam $remaining, '
+      label:
+          '${window.label}: $used por cento usado, restam $remaining, '
           '$resetLabel',
       excludeSemantics: true,
       child: Column(

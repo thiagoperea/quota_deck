@@ -64,7 +64,20 @@ class _HomePageState extends State<HomePage> {
   Future<void> _bootstrap() async {
     final state = context.read<AppState>();
     await state.initialize();
+    // Com erro de carga não há dados para o assistente mostrar: o ErrorCard
+    // tem prioridade e o wizard abre depois de um retry bem-sucedido.
+    await _maybeShowFirstRunWizard(state);
+  }
+
+  Future<void> _retryAndMaybeOnboard() async {
+    final state = context.read<AppState>();
+    await state.retry();
+    await _maybeShowFirstRunWizard(state);
+  }
+
+  Future<void> _maybeShowFirstRunWizard(AppState state) async {
     if (!mounted) return;
+    if (state.error != null) return;
     if (state.config.onboardingCompleted || _wizardShown) return;
     _wizardShown = true;
     await showProviderWizard(context, firstRun: true);
@@ -158,12 +171,12 @@ class _HomePageState extends State<HomePage> {
                         else if (state.error != null && !state.hasData)
                           ErrorCard(
                             message: state.error!,
-                            onRetry: () => unawaited(state.retry()),
+                            onRetry: () => unawaited(_retryAndMaybeOnboard()),
                           )
                         else if (state.isEmpty)
                           OnboardingCard(
                             noProvidersEnabled: !state.hasProvidersEnabled,
-                            onRetry: () => unawaited(state.retry()),
+                            onRetry: () => unawaited(_retryAndMaybeOnboard()),
                             onOpenWizard: () =>
                                 unawaited(showProviderWizard(context)),
                             onOpenSettings: () =>
@@ -325,6 +338,7 @@ class _HomePageState extends State<HomePage> {
                         final authError = snap?.errors.any(
                           (error) =>
                               error.code == 'AUTH_MISSING' ||
+                              error.code == 'CREDENTIAL_UNREADABLE' ||
                               error.code == 'AUTH_EXPIRED' ||
                               error.code == 'NOT_INSTALLED',
                         );
@@ -417,7 +431,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QdPalette.of(context);
     final enabled = ProviderId.values.where(state.config.isEnabled).length;
-    final lastUpdate = state.lastUpdatedAt;
+    final lastUpdate = state.lastRefreshAt ?? state.lastUpdatedAt;
     final updateLabel = lastUpdate == null
         ? 'carregando'
         : 'Atualizado ${relativeTime(lastUpdate)}';
@@ -454,12 +468,23 @@ class _Header extends StatelessWidget {
             ),
           ),
         ] else
-          const Spacer(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                key: const Key('header-age'),
+                lastUpdate == null ? 'carregando…' : relativeTime(lastUpdate),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+              ),
+            ),
+          ),
         if (!compact) ...[
           Tooltip(
             message: lastUpdate == null
                 ? 'Aguardando os dados'
-                : 'Dado mais antigo na tela: '
+                : 'Última coleta: '
                       '${DateFormat('dd/MM/yyyy HH:mm').format(lastUpdate.toLocal())}',
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -486,7 +511,10 @@ class _Header extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     updateLabel,
-                    style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontSize: QdType.micro,
+                    ),
                   ),
                 ],
               ),
@@ -785,6 +813,23 @@ class _SummaryStats extends StatelessWidget {
         : QuotaBar.colorFor(context, mostUsed.window.status);
 
     if (compact) {
+      // Em telas estreitas ou com fonte ampliada os dois KPIs lado a lado
+      // truncam ("PRÓXIMO RES…"): empilha.
+      final tight =
+          MediaQuery.sizeOf(context).width < 360 ||
+          MediaQuery.textScalerOf(context).scale(1) > 1.2;
+      final kpiFolga = _SummaryKpi(
+        label: 'FOLGA',
+        value: availableValue,
+        subtitle: availableSubtitle,
+        color: availableColor,
+      );
+      final kpiReset = _SummaryKpi(
+        label: 'PRÓXIMO RESET',
+        value: resetValue,
+        subtitle: resetSubtitle,
+        color: palette.yellow,
+      );
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
@@ -792,28 +837,23 @@ class _SummaryStats extends StatelessWidget {
           borderRadius: BorderRadius.circular(QdRadius.card),
           border: Border.all(color: palette.border),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _SummaryKpi(
-                label: 'FOLGA',
-                value: availableValue,
-                subtitle: availableSubtitle,
-                color: availableColor,
+        child: tight
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  kpiFolga,
+                  Divider(height: 18, color: palette.border),
+                  kpiReset,
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: kpiFolga),
+                  _KpiDivider(palette: palette),
+                  Expanded(child: kpiReset),
+                ],
               ),
-            ),
-            _KpiDivider(palette: palette),
-            Expanded(
-              child: _SummaryKpi(
-                label: 'PRÓXIMO RESET',
-                value: resetValue,
-                subtitle: resetSubtitle,
-                color: palette.yellow,
-              ),
-            ),
-          ],
-        ),
       );
     }
 
@@ -907,7 +947,10 @@ class _AttentionStrip extends StatelessWidget {
               if (hidden > 0)
                 Text(
                   '+$hidden',
-                  style: TextStyle(color: palette.muted, fontSize: QdType.micro),
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: QdType.micro,
+                  ),
                 ),
             ],
           ),
@@ -976,7 +1019,7 @@ class _AttentionStrip extends StatelessWidget {
 
   String _attentionLabel(ProviderSnapshot snapshot) {
     if (_needsAuth(snapshot)) return 'login necessário';
-    if (snapshot.stale) return 'dado de ${relativeTime(snapshot.fetchedAt)}';
+    if (snapshot.stale) return 'atualizado ${relativeTime(snapshot.fetchedAt)}';
     final window = snapshot.worstWindow;
     if (window == null) return 'sem janelas';
     return '${window.label} · ${_statusText(window.status)}';
@@ -994,6 +1037,7 @@ class _AttentionStrip extends StatelessWidget {
     (error) =>
         error.code == 'AUTH_EXPIRED' ||
         error.code == 'AUTH_MISSING' ||
+        error.code == 'CREDENTIAL_UNREADABLE' ||
         error.code == 'PERMISSION_DENIED',
   );
 }
@@ -1089,11 +1133,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [palette.text.withValues(alpha: 0.025), palette.panel2],
-        ),
+        color: palette.panel2,
         borderRadius: BorderRadius.circular(QdRadius.card),
         border: Border.all(color: palette.border),
       ),
@@ -1263,6 +1303,18 @@ class _ResetsPanel extends StatelessWidget {
   }
 }
 
+String _resetTitle(UpcomingReset reset) {
+  final window = reset.window;
+  final group = window.group?.trim();
+  final base = '${reset.snapshot.provider.displayName} · ${window.label}';
+  if (group == null || group.isEmpty) return base;
+  // O Antigravity tem "5 horas" em grupos diferentes; sem o grupo os dois
+  // resets ficam idênticos na lista.
+  // Mantém o rótulo como no card (GEMINI MODELS), sem "Title Case" que
+  // transformava "Claude and GPT models" em "Claude And Gpt Models".
+  return '$base · ${group.toUpperCase()}';
+}
+
 class _ResetRow extends StatelessWidget {
   const _ResetRow({required this.reset, required this.compact});
 
@@ -1286,7 +1338,7 @@ class _ResetRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${reset.snapshot.provider.displayName} · ${window.label}',
+                  _resetTitle(reset),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

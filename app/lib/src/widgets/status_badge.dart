@@ -106,7 +106,9 @@ class StatusBadge extends StatelessWidget {
               decoration: BoxDecoration(
                 color: palette.yellow.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: palette.yellow.withValues(alpha: 0.35)),
+                border: Border.all(
+                  color: palette.yellow.withValues(alpha: 0.35),
+                ),
               ),
               child: Text(
                 'estimado',

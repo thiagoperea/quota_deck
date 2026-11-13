@@ -67,4 +67,55 @@ void main() {
       expect(service.isNewer('abc', 'xyz'), isFalse);
     });
   });
+
+  group('validReleaseUrl', () {
+    test('aceita apenas release do repositório oficial em https', () {
+      expect(
+        UpdateService.validReleaseUrl(
+          'https://github.com/thiagoperea/quota_deck/releases/tag/v0.8.0',
+        ),
+        isNotNull,
+      );
+      expect(
+        UpdateService.validReleaseUrl(
+          'http://github.com/thiagoperea/quota_deck/releases/tag/v0.8.0',
+        ),
+        isNull,
+      );
+      expect(
+        UpdateService.validReleaseUrl(
+          'https://evil.example/thiagoperea/quota_deck/releases/tag/v1',
+        ),
+        isNull,
+      );
+      expect(
+        UpdateService.validReleaseUrl('https://github.com/outro/projeto'),
+        isNull,
+      );
+      expect(
+        UpdateService.validReleaseUrl(
+          'javascript:alert(1)//github.com/thiagoperea/quota_deck/',
+        ),
+        isNull,
+      );
+      expect(UpdateService.validReleaseUrl('  '), isNull);
+      expect(UpdateService.validReleaseUrl(null), isNull);
+    });
+
+    test('rejeita credenciais embutidas na URL', () {
+      expect(
+        UpdateService.validReleaseUrl(
+          'https://user:pass@github.com/thiagoperea/quota_deck/releases',
+        ),
+        isNull,
+      );
+    });
+
+    test('openExternal ignora URL fora da allowlist', () async {
+      expect(
+        await UpdateService().openExternal('https://evil.example/download'),
+        isFalse,
+      );
+    });
+  });
 }

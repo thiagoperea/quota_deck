@@ -101,9 +101,8 @@ class _MiniFreshness extends StatelessWidget {
     final palette = QdPalette.of(context);
     final problem = state.error != null || state.hasStaleData;
     final last = state.lastUpdatedAt;
-    final label = last == null
-        ? 'carregando dados'
-        : 'atualizado ${relativeTime(last)}';
+    final age = last == null ? null : relativeTime(last);
+    final label = age == null ? 'carregando dados' : 'atualizado $age';
 
     if (!problem) {
       return Row(
@@ -137,8 +136,10 @@ class _MiniFreshness extends StatelessWidget {
           Expanded(
             child: Text(
               state.error != null
-                  ? 'Sem atualizar · $label'
-                  : 'Dados antigos · $label',
+                  ? (age == null
+                        ? 'Sem atualizar'
+                        : 'Sem atualizar · dados de $age')
+                  : 'Dados antigos · ${age ?? 'sem data'}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: palette.yellow, fontSize: QdType.micro),
@@ -368,6 +369,7 @@ class _MiniProviderRowState extends State<_MiniProviderRow> {
     (error) =>
         error.code == 'AUTH_EXPIRED' ||
         error.code == 'AUTH_MISSING' ||
+        error.code == 'CREDENTIAL_UNREADABLE' ||
         error.code == 'PERMISSION_DENIED',
   );
 

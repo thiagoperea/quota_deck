@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:quota_deck_models/quota_deck_models.dart';
 
+import '../app.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'provider_card.dart';
@@ -103,9 +104,9 @@ class _ProviderWizardState extends State<_ProviderWizard> {
       (error) =>
           error.code == 'AUTH_EXPIRED' ||
           error.code == 'AUTH_MISSING' ||
+          error.code == 'CREDENTIAL_UNREADABLE' ||
           error.code == 'PERMISSION_DENIED' ||
-          error.code == 'NOT_INSTALLED' ||
-          error.code == 'CREDENTIAL_UNREADABLE',
+          error.code == 'NOT_INSTALLED',
     );
     if (snapshot != null && snapshot.windows.isNotEmpty && authError != true) {
       return _ProviderStatus.connected;
@@ -186,7 +187,8 @@ class _ProviderWizardState extends State<_ProviderWizard> {
   }
 
   bool get _dirty => ProviderId.values.any(
-    (provider) => _isEnabled(provider) != widget.state.config.isEnabled(provider),
+    (provider) =>
+        _isEnabled(provider) != widget.state.config.isEnabled(provider),
   );
 
   Future<void> _close() async {
@@ -216,6 +218,32 @@ class _ProviderWizardState extends State<_ProviderWizard> {
       );
       if (discard != true || !mounted) return;
     }
+    // Fechar é uma decisão: sem isso o assistente reabria em toda inicialização.
+    final state = widget.state;
+    if (!state.config.onboardingCompleted) {
+      await state.saveSettings(
+        state.config.copyWith(onboardingCompleted: true),
+      );
+    }
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    // O contexto do wizard morre no pop; a ação usa o contexto da raiz.
+    final host = rootNavigatorKey.currentContext;
+    messenger?.showSnackBar(
+      SnackBar(
+        content: const Text('Assistente fechado.'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Abrir',
+          onPressed: () {
+            if (host != null && host.mounted) {
+              unawaited(showProviderWizard(host));
+            }
+          },
+        ),
+      ),
+    );
     Navigator.of(context).maybePop();
   }
 
