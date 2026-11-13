@@ -264,6 +264,16 @@ jobs:
         with:
           name: QuotaDeck ${{ github.ref_name }}
           generate_release_notes: true
+          append_body: true
+          body: |
+            **macOS:** este release não traz binário. Sem Developer ID/
+            notarização, o macOS marca o app baixado como "danificado".
+            Compile localmente:
+
+            ```bash
+            git clone https://github.com/thiagoperea/quota_deck.git
+            cd quota_deck/app && flutter build macos --release
+            ```
           # macOS fica de fora: sem notarização o Gatekeeper bloqueia o app
           # baixado. O build continua no CI como artefato para os mantenedores.
           files: |
