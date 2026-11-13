@@ -97,6 +97,15 @@ jobs:
           cd packages/cli
           dart analyze
 
+      - name: format
+        shell: bash
+        run: |
+          set -e
+          for d in packages/models packages/core packages/cli app; do
+            (cd "$d" && dart format --output=none --set-exit-if-changed lib test)
+          done
+          dart format --output=none --set-exit-if-changed tool
+
       - name: analyze app
         shell: bash
         run: |
@@ -234,6 +243,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Conferir tag x pubspec
+        shell: bash
+        run: |
+          set -e
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(grep -m1 '^version:' app/pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)
+          echo "tag=$tag pubspec=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $tag != app/pubspec.yaml $version"
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -243,8 +264,9 @@ jobs:
         with:
           name: QuotaDeck ${{ github.ref_name }}
           generate_release_notes: true
+          # macOS fica de fora: sem notarização o Gatekeeper bloqueia o app
+          # baixado. O build continua no CI como artefato para os mantenedores.
           files: |
-            artifacts/quota_deck-macos/quota_deck-macos.zip
             artifacts/quota_deck-windows/quota_deck-windows.zip
             artifacts/quota_deck-windows-installer/*.exe
             artifacts/quota_deck-linux/quota_deck-linux.tar.gz

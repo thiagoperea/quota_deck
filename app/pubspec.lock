@@ -358,14 +358,14 @@ packages:
       path: "../packages/core"
       relative: true
     source: path
-    version: "0.6.0"
+    version: "0.7.1"
   quota_deck_models:
     dependency: "direct main"
     description:
       path: "../packages/models"
       relative: true
     source: path
-    version: "0.6.0"
+    version: "0.7.1"
   record_use:
     dependency: transitive
     description:

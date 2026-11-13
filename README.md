@@ -47,9 +47,23 @@ cd packages/cli
 dart pub global activate --source path .
 ```
 
+O shim é criado em `~/.pub-cache/bin` — coloque esse diretório no `PATH`.
+Se já existir um `qdeck` de outra instalação, confira com `which qdeck` e
+`qdeck version` (o binário precisa reportar a versão do `packages/cli/pubspec.yaml`).
+
 ## Instalar ou rodar local
 
 **Windows:** baixe o `quota_deck-<versão>-setup.exe` na [release mais recente](https://github.com/thiagoperea/quota_deck/releases) (instala sem pedir admin).
+
+**macOS:** não publicamos binário — sem Developer ID pago o macOS marca o app
+baixado como "danificado" (quarentena + Gatekeeper). Compile localmente com
+dois comandos; leva ~2 min:
+
+```bash
+cd app
+flutter build macos --release
+open build/macos/Build/Products/Release/quota_deck.app
+```
 
 **Rodar ou buildar do código (Windows, macOS e Linux):**
 

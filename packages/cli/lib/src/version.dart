@@ -1,2 +1,5 @@
 /// Fonte única da versão da CLI.
-const String cliVersion = '0.5.0';
+///
+/// Precisa bater com `version:` do `pubspec.yaml`; o teste
+/// `test/version_test.dart` falha se divergirem.
+const String cliVersion = '0.7.1';

@@ -6,6 +6,10 @@
 
 ---
 
+> **Implementado hoje:** RPC local `RetrieveUserQuotaSummary` usando o hub
+> (`~/.gemini/antigravity/daemon/hub_*.json`, porta + CSRF). O statusline
+> oficial e o fallback OAuth direto são pesquisa/roadmap, não código.
+
 ## 1. Arquitetura do Antigravity
 
 O Antigravity é um app Electron com um processo auxiliar Go: `language_server`.

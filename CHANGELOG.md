@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.7.1
+
+### Bandeja e janela
+- Fechar a janela **não encerra mais o app** no macOS: o runner deixou de
+  terminar no último fechamento e o `TrayService` só esconde (ou encerra de
+  forma explícita quando não há bandeja). Teste de regressão lê o
+  `AppDelegate.swift`.
+- Falha ao inicializar a bandeja não derruba mais o app; `_quit`/`dispose`
+  ficaram idempotentes.
+
+### Detecção de provedores
+- Instalação agora exige prova real: binário no PATH, `Nome.app` em
+  `/Applications`/`~/Applications` ou processo rodando. Diretório de config,
+  histórico antigo e credencial órfã não contam mais — sobras de instalações
+  antigas faziam Codex e Claude aparecerem como instalados.
+- A tela de Configurações lista apenas provedores instalados (ou ligados) e
+  resume em uma linha: "Desktop e CLI conectados", "Desktop conectado",
+  "CLI sem login". Os ausentes viram uma nota com "Abrir assistente".
+- A leitura manda mais que a detecção: superfície com erro de login não
+  aparece como conectada em nenhuma tela.
+- "Verificar agora" invalida o cache de descoberta e vê binários instalados
+  depois de abrir o app.
+
+### Claude no macOS
+- Respeita `CLAUDE_CONFIG_DIR` (arquivo antes do Keychain), tenta
+  `~/.claude/.credentials.json` como fallback e diferencia
+  `PERMISSION_DENIED` (`security` exit 51/45) de credencial ausente.
+
+### Dados e erros
+- Falha de socket/DNS/TLS vira `NETWORK` (exit 3) e JSON inesperado vira
+  `SCHEMA_CHANGED`; antes caíam em `UNKNOWN`.
+- Credencial ilegível deixa de ser reportada como "não instalado" (exit 2).
+- `clampPercent(99,95)` não anuncia mais 100%/limite.
+- `AppConfig.fromJson` normaliza thresholds, retenção e tema (config editado
+  à mão não apaga mais o histórico).
+- Backup `.bak` de config/cache não é mais sobrescrito por arquivo corrompido.
+- Burn rate/ETA ignora amostras anteriores ao último reset da janela.
+- `QdeckErrorInfo.toJson` redige `message` e `details` (cobre `--json`).
+
+### CLI (`qdeck`)
+- `dart pub global activate` volta a criar o binário (`executables: qdeck`).
+- Versão unificada com o app (`0.7.1`); teste impede divergência.
+- `doctor --json`, `--no-color` e `--data-dir`; ignora provedores desligados e
+  diz "token expirado em X — abra o Claude Code para renovar".
+- Novo `show/json --include-disabled`; provider desligado pedido em
+  `--provider` avisa e sai com 5.
+- `watch` não emite mais `ESC[2J` em pipe e ganhou `--no-clear`.
+
+### Painel e visual
+- Tema claro sem o véu cinza nos cards (cor sólida em vez de gradiente com
+  alfa baixo) e ação de snackbar com contraste AA.
+- Header (inclusive compacto) mostra a **última coleta**, não o dado mais
+  antigo; "Próximos resets" inclui o grupo para desambiguar "5 horas".
+- Falha de atualização marca os cards como desatualizados.
+- KPIs empilham em telas estreitas/fonte ampliada; barra em 0% sem ponto
+  verde; menu de visibilidade opaco; feedback ao salvar personalização.
+- Wizard não sobrepõe mais erro de carga e fechar o assistente persiste o
+  onboarding. Copy de "atualizado há…" e do mini corrigidas.
+
+### Segurança e release
+- Link de atualização só abre `https://github.com/thiagoperea/quota_deck/...`;
+  no Windows usa `rundll32` em vez de `cmd /c start`.
+- `make clean` não apaga mais o pub cache global; tarefa desconhecida sai 64;
+  `setup` avisa sobre Xcode/CocoaPods ausentes.
+- CI falha se a tag não bater com `app/pubspec.yaml`.
+- **macOS continua apenas como build local**: sem Developer ID/notarização o
+  binário baixado é marcado como danificado pelo Gatekeeper, então o zip saiu
+  dos assets do release. Compile com `cd app && flutter build macos --release`.
+
 ## 0.7.0
 
 ### Painel

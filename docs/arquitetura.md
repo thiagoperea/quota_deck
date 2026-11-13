@@ -1,6 +1,9 @@
 # Arquitetura
 
-O QuotaDeck é um app Flutter desktop + CLI. O desktop é **single-process**: a UI chama o core Dart no mesmo processo. Não existe daemon, porta HTTP, cookie ou token.
+O QuotaDeck é um app Flutter desktop + CLI. O desktop é **single-process**: a
+UI fala com um worker Dart (`Isolate`) que executa o core. Não existe daemon nem
+porta HTTP; há apenas o socket de instância única (`127.0.0.1:47831`), que serve
+para trazer a janela da instância existente à frente.
 
 ## Módulos
 
@@ -8,7 +11,7 @@ O QuotaDeck é um app Flutter desktop + CLI. O desktop é **single-process**: a 
 app/ (Flutter)
   ├── UI (dashboard, compacto, settings)
   ├── TrayService (tray_manager + window_manager)
-  └── LocalQuotaApi ──► packages/core
+  └── LocalQuotaApi ──► worker Isolate ──► packages/core
 
 packages/models   DTOs, config, status, redaction (Dart puro)
 packages/core     providers, cache, histórico SQLite, paths, doctor
@@ -45,10 +48,12 @@ Cada adapter lê a credencial local e consulta a fonte mais barata. O resultado 
 
 ## Bandeja e janela
 
-- `TrayService` registra o ícone e o menu (Abrir, Dashboard, Atualizar, Sair).
-- Clique esquerdo alterna a janela compacta (420×760).
-- Dashboard abre em 1100×800.
-- Fechar a janela esconde para a bandeja; “Sair” encerra o processo.
+- `TrayService` registra o ícone e o menu (Abrir mini, Dashboard completo,
+  Personalizar painel, Detectar provedores, Configurações, Atualizar agora, Sair).
+- Clique esquerdo alterna a janela mini (380×500).
+- Dashboard completo abre em 1100×800; a janela inicial (não-mini) usa 420×760.
+- Fechar a janela esconde para a bandeja (o runner do macOS não encerra o app);
+  “Sair” encerra o processo.
 - macOS usa ícone template (monocromático); Windows/Linux usam o ícone colorido.
 
 ## Providers
@@ -110,12 +115,14 @@ baixa nem executa nada; pode ser desligado por `checkUpdates`.
 
 ## Erros
 
-Cada provider pode falhar sem derrubar os outros. Os erros são tipados (`AUTH_MISSING`, `AUTH_EXPIRED`, `NETWORK`, `RATE_LIMITED`, `SCHEMA_CHANGED`, `PROVIDER_NOT_RUNNING`) e aparecem no card com uma ação (“Abrir Claude Code”, “Tentar novamente” etc.). Em `RATE_LIMITED`, o card mostra a contagem até a próxima tentativa e esconde o botão “Tentar”.
+Cada provider pode falhar sem derrubar os outros. Os erros são tipados (`AUTH_MISSING`, `AUTH_EXPIRED`, `PERMISSION_DENIED`, `CREDENTIAL_UNREADABLE`, `NETWORK`, `RATE_LIMITED`, `SCHEMA_CHANGED`, `PROVIDER_NOT_RUNNING`) e aparecem no card com uma ação (“Abrir Claude Code”, “Tentar novamente” etc.). Em `RATE_LIMITED`, o card mostra a contagem até a próxima tentativa e esconde o botão “Tentar”.
 
 ## Decisões
 
 - **Flutter** para uma única base de UI em macOS, Windows e Linux.
-- **Desktop single-process** para eliminar daemon, porta, token e lifecycle.
+- **Desktop em um processo só, com worker** (isolate persistente) para tirar a
+  coleta da UI sem adicionar daemon. A única porta é o socket de instância
+  única em `127.0.0.1:47831`.
 - **CLI no mesmo core** para scripts e statusline.
 - **Sem refresh OAuth automático** para não rotacionar refresh token do usuário.
 - **Read-only** em credenciais e endpoints de uso.

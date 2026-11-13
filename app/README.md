@@ -7,7 +7,9 @@ flutter pub get
 flutter run -d macos      # ou -d windows / -d linux
 ```
 
-O app é single-process: `LocalQuotaApi` chama `packages/core` diretamente. Não há daemon, porta ou token.
+O app é single-process: `LocalQuotaApi` conversa com um worker Dart persistente
+que roda `packages/core`. Não há daemon nem HTTP; a única porta é o socket local
+de instância única (`127.0.0.1:47831`), usado só para trazer a janela à frente.
 
 Build:
 

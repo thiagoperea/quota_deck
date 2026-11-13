@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
 .PHONY: setup format analyze test test-core test-app run-windows run-macos run-linux \
-	build-windows build-macos build-linux cli cli-install mock clean installer
+	build-windows build-macos build-linux cli cli-install bump clean installer
 
 # Runner único cross-platform (Windows/macOS/Linux). Requer `dart` no PATH.
 setup:
@@ -51,9 +51,8 @@ cli:
 cli-install:
 	cd packages/cli && dart pub global activate --source path .
 
-mock:
-	cd app && flutter run -d macos --dart-define=QDECK_MOCK=1
+bump:
+	dart tool/tasks.dart bump $(ARGS)
 
 clean:
-	cd packages/models && dart pub cache clean >/dev/null 2>&1 || true
-	rm -rf app/build packages/*/.dart_tool packages/*/build
+	dart tool/tasks.dart clean

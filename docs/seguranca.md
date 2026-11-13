@@ -18,8 +18,13 @@ O QuotaDeck lê credenciais locais. A regra é simples: ler o mínimo, guardar o
 - **Somente leitura.** O app não escreve credenciais.
 - **Sem refresh OAuth.** Token expirado vira mensagem para abrir a ferramenta original.
 - **Sem telemetria.** Nenhum dado sai da máquina.
-- **Sem daemon.** O desktop não abre porta, não cria cookie/token e não expõe HTTP.
-- **Redaction.** Toda mensagem de erro/log passa por `redact()`.
+- **Sem daemon.** O desktop não expõe HTTP nem cria cookie/token. A única
+  porta é o socket de instância única: bind em `127.0.0.1:47831`
+  (`app/lib/src/desktop/single_instance.dart`), usado apenas para pedir foco
+  à instância já aberta. Não aceita comandos além de "mostrar janela".
+- **Redaction.** Toda mensagem de erro/log que sai do core passa por
+  `redact()`; a serialização de `QdeckErrorInfo.toJson` também redige
+  `message` e `details`.
 
 ## Credenciais por SO
 

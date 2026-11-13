@@ -293,4 +293,4 @@ Permissões: diretório `0700`; arquivos `0600` quando possível.
 - Nenhum campo com token/segredo.
 - JSON serializável e estável.
 
-Fixtures: `docs/pesquisa/fixtures/` e `packages/core/test/fixtures/`.
+Fixtures: `packages/core/test/fixtures/`.

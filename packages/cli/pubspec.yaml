@@ -1,7 +1,10 @@
 name: quota_deck_cli
 description: CLI do QuotaDeck (qdeck).
-version: 0.6.0
+version: 0.7.1
 publish_to: none
+
+executables:
+  qdeck:
 
 environment:
   sdk: ^3.13.0

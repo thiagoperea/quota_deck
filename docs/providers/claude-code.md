@@ -43,7 +43,14 @@ O valor é JSON:
 
 Mesma estrutura `claudeAiOauth`.
 
-Com `CLAUDE_CONFIG_DIR` customizado, o serviço do Keychain vira `Claude Code-credentials-<hash>` e o arquivo fica em `<CLAUDE_CONFIG_DIR>/.credentials.json`. Buscar pelo serviço (sem account fixo) é mais robusto.
+Com `CLAUDE_CONFIG_DIR` customizado, o serviço do Keychain vira `Claude Code-credentials-<hash>` e o arquivo fica em `<CLAUDE_CONFIG_DIR>/.credentials.json`.
+
+**Implementação atual:** quando `CLAUDE_CONFIG_DIR` está definido, o adapter lê
+`<CLAUDE_CONFIG_DIR>/.credentials.json` primeiro (o hash do serviço não é
+calculável de forma confiável); sem config dir, tenta o serviço
+`Claude Code-credentials` e cai para `~/.claude/.credentials.json`.
+Negação do Keychain (`security` exit 51/45) vira `PERMISSION_DENIED`; JSON
+inválido vira `CREDENTIAL_UNREADABLE`.
 
 ---
 

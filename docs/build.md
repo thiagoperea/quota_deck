@@ -5,14 +5,14 @@
 | Ferramenta | Uso |
 |---|---|
 | Flutter 3.47+ / Dart 3.13+ | app, core e CLI |
-
-> O CI fixa **Flutter 3.47.9** (`FLUTTER_VERSION` em `.github/workflows/ci.yml`).
-> O `nativeapi 0.5.10` (última publicada) usa `Isolate.create`, que não existe
-> no Flutter 3.50+. Ao subir o Flutter, atualize o `nativeapi` primeiro.
 | Xcode 27+ | build macOS (macOS 26.6+, Apple Silicon) |
 | Visual Studio Desktop C++ | build Windows |
 | GTK 3, X11, Xi, libnotify, CMake, Ninja, Clang | build Linux |
 | Node/npm | não é usado |
+
+> O CI fixa **Flutter 3.47.9** (`FLUTTER_VERSION` em `.github/workflows/ci.yml`).
+> O `nativeapi 0.5.10` (última publicada) usa `Isolate.create`, que não existe
+> no Flutter 3.50+. Ao subir o Flutter, atualize o `nativeapi` primeiro.
 
 ```bash
 flutter --version
@@ -29,6 +29,21 @@ dart tool/tasks.dart setup
 ```
 
 `tool/tasks.dart` funciona no Windows, macOS e Linux; os alvos do `Makefile` apenas delegam para ele (`make setup`, `make analyze`, `make test`, `make build-windows`, `make installer`).
+
+Tarefa desconhecida retorna **exit 64** (antes saía 0). `setup` avisa quando falta
+pré-requisito de build (Xcode/CocoaPods no macOS, cmake/ninja/pkg-config no Linux)
+sem falhar.
+
+## Limpeza
+
+```bash
+dart tool/tasks.dart clean   # ou make clean
+```
+
+Remove apenas artefatos do repositório (`app/build`, `.dart_tool`,
+`app/.flutter-plugins*`, `macos/Pods`, `macos/Flutter/ephemeral`).
+**Não** roda `dart pub cache clean`: o cache global do Dart é compartilhado com
+outros projetos da máquina.
 
 ## Windows (instalador)
 
@@ -157,6 +172,21 @@ cd app && flutter build macos --release
 ```
 
 Assinatura/notarização são necessárias apenas para distribuir fora da sua máquina.
+
+## Fumaça manual (app de bandeja)
+
+Rode depois de qualquer mudança em `TrayService`, `main.dart` ou no runner
+(`app/macos/Runner`):
+
+1. Abrir o app, clicar no vermelho da janela → deve aparecer "Continua na bandeja".
+2. Clicar em "Entendi" → a janela some e **o processo continua vivo**
+   (`pgrep -fl quota_deck.app/Contents/MacOS/quota_deck`).
+3. Clicar no ícone da bandeja → o mini volta.
+4. Menu da bandeja → "Sair" → o processo encerra de verdade.
+
+Se o passo 2 falhar, o runner voltou a encerrar no último fechamento
+(`applicationShouldTerminateAfterLastWindowClosed` em `AppDelegate.swift`);
+`app/test/desktop_close_test.dart` cobre essa regressão.
 
 ## Troubleshooting
 

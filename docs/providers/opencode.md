@@ -6,6 +6,11 @@
 
 ---
 
+> **Implementado hoje:** SQLite `credential` em modo somente leitura (caminho
+> `XDG_DATA_HOME`/`~/.local/share/opencode/opencode.db`, com override
+> `QDECK_OPENCODE_DB`), integração `opencode-go`/`opencode`. Os fallbacks
+> `auth.json` e `OPENCODE_API_KEY` descritos abaixo **não** estão implementados.
+
 ## 1. Onde está a credencial
 
 O OpenCode 2.x guarda credenciais no SQLite do servidor local:
@@ -73,6 +78,8 @@ Algumas versões usam `~/.local/share/opencode/auth.json` ou `~/.config/opencode
 1. SQLite `credential` (`integration_id` = `opencode-go` ou `opencode`, `active=1`);
 2. `auth.json` (`opencode-go` / `opencode`);
 3. variável `OPENCODE_API_KEY` (opt-in, para CI/testes).
+
+> **Estado atual:** apenas o item 1 existe no código (`packages/core/lib/src/providers/opencode.dart`).
 
 ---
 
