@@ -7,6 +7,7 @@ import 'package:quota_deck_models/quota_deck_models.dart';
 import '../claude_desktop_auth.dart';
 import '../errors.dart';
 import '../paths.dart';
+import '../process_runner.dart';
 import '../provider.dart';
 
 class ClaudeProvider implements ProviderAdapter {
@@ -38,9 +39,13 @@ class ClaudeProvider implements ProviderAdapter {
     final binary = await _findCliBinary(ctx);
     final expired =
         creds?.expiresAt != null && creds!.expiresAt!.isBefore(ctx.now());
+    // Credencial sozinha (Keychain/arquivo antigo) não é instalação: sem
+    // binário nem app, o Claude Code não existe nesta máquina. Override
+    // explícito (`QDECK_CLAUDE_CREDS`) conta como instalação para CI/testes.
+    final installed =
+        binary != null || (ctx.env['QDECK_CLAUDE_CREDS'] ?? '').isNotEmpty;
     final authenticated =
-        creds != null && creds.accessToken.isNotEmpty && !expired;
-    final installed = fileExists || binary != null || creds != null;
+        installed && creds != null && creds.accessToken.isNotEmpty && !expired;
     return SurfaceState(
       surface: ProviderSurface.cli,
       installed: installed,
@@ -65,6 +70,7 @@ class ClaudeProvider implements ProviderAdapter {
     final dirs = AppPaths.claudeDesktopDirs(env: ctx.env);
     final historyFile = await _newestUsageFile(ctx);
     final token = await readClaudeDesktopToken(ctx);
+    final appBundle = await ctx.discovery.hasAppBundle(const ['Claude']);
     String? installedDir;
     for (final dir in dirs) {
       if (dir.existsSync()) {
@@ -76,10 +82,18 @@ class ClaudeProvider implements ProviderAdapter {
     final usage = historyFile == null
         ? null
         : await _readDesktopUsage(historyFile);
-    final authenticated = token != null || usage != null;
+    // Histórico antigo sozinho não é "instalado": pode ser sobra de um app
+    // desinstalado (foi o que mostrou "Desktop conectado" com 40 dias).
+    // No macOS, diretório de dados é sobra de app desinstalado; o sinal
+    // confiável é o bundle. Em Windows/Linux o diretório é o próprio instalador.
+    final installed =
+        appBundle || running || (!Platform.isMacOS && installedDir != null);
+    // Token sozinho é sobra de login antigo (o app pode ter sido removido):
+    // só conta como "conectado" se o app estiver instalado.
+    final authenticated = installed && (token != null || usage != null);
     return SurfaceState(
       surface: ProviderSurface.desktop,
-      installed: installedDir != null || running || usage != null,
+      installed: installed,
       authenticated: authenticated,
       live: token != null,
       location: historyFile == null
@@ -88,6 +102,8 @@ class ClaudeProvider implements ProviderAdapter {
       account: null,
       reason: token != null
           ? 'Sessão do Claude Desktop (app) encontrada; leitura ao vivo.'
+          : !installed
+          ? 'Claude Desktop não instalado.'
           : usage == null
           ? 'Claude Desktop detectado, sem histórico de uso legível.'
           : 'Histórico local do Claude Desktop (estimado, atualiza com o app aberto).',
@@ -157,8 +173,9 @@ class ClaudeProvider implements ProviderAdapter {
 
     final installed =
         await _findCliBinary(ctx) != null ||
-        await AppPaths.claudeCredentials(env: ctx.env).exists() ||
-        AppPaths.claudeDesktopDirs(env: ctx.env).any((d) => d.existsSync());
+        (ctx.env['QDECK_CLAUDE_CREDS'] ?? '').isNotEmpty ||
+        await ctx.discovery.hasAppBundle(const ['Claude']) ||
+        await ctx.discovery.isRunning(const ['claude']);
     throw QdeckException(
       code: installed ? firstError.code : QdeckErrorCode.notInstalled,
       provider: id,
@@ -369,6 +386,9 @@ class ClaudeProvider implements ProviderAdapter {
               : DoctorStatus.ok,
           message: expires == null
               ? 'expiresAt ausente.'
+              : expires.isBefore(ctx.now())
+              ? 'token expirado em ${formatDate(expires)}. '
+                    'Abra o Claude Code para renovar.'
               : 'expira em ${formatDate(expires)}',
         ),
       );
@@ -493,21 +513,7 @@ class ClaudeProvider implements ProviderAdapter {
         final decoded = jsonDecode(await file.readAsString());
         if (decoded is Map<String, dynamic>) raw = decoded;
       } else if (Platform.isMacOS) {
-        final result = await ctx.process.run('security', [
-          'find-generic-password',
-          '-s',
-          'Claude Code-credentials',
-          '-w',
-        ], timeout: const Duration(seconds: 10));
-        if (!result.ok || result.stdout.trim().isEmpty) {
-          throw QdeckException(
-            code: QdeckErrorCode.authMissing,
-            provider: id,
-            message: 'Item do Keychain não encontrado.',
-          );
-        }
-        final decoded = jsonDecode(result.stdout.trim());
-        if (decoded is Map<String, dynamic>) raw = decoded;
+        raw = await _readMacCredentials(ctx);
       } else {
         final file = AppPaths.claudeCredentials(env: ctx.env);
         if (!await file.exists()) return null;
@@ -553,6 +559,80 @@ class ClaudeProvider implements ProviderAdapter {
       ctx.log('Claude: falha ao ler credenciais (${e.runtimeType}).');
       return null;
     }
+  }
+
+  /// macOS: Keychain padrão + arquivo, respeitando `CLAUDE_CONFIG_DIR`.
+  ///
+  /// Com diretório customizado o serviço do Keychain ganha um hash que não
+  /// temos como calcular, então o arquivo é a fonte confiável.
+  Future<Map<String, dynamic>?> _readMacCredentials(ProviderContext ctx) async {
+    final configDir = (ctx.env['CLAUDE_CONFIG_DIR'] ?? '').trim();
+    final file = AppPaths.claudeCredentials(env: ctx.env);
+    if (configDir.isNotEmpty) {
+      final fromFile = await _readCredentialFile(ctx, file);
+      if (fromFile != null) return fromFile;
+    }
+
+    final result = await ctx.process.run('security', [
+      'find-generic-password',
+      '-s',
+      'Claude Code-credentials',
+      '-w',
+    ], timeout: const Duration(seconds: 10));
+
+    if (result.ok && result.stdout.trim().isNotEmpty) {
+      final decoded = jsonDecode(result.stdout.trim());
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw QdeckException(
+        code: QdeckErrorCode.credentialUnreadable,
+        provider: id,
+        message: 'Item do Keychain do Claude sem JSON válido.',
+      );
+    }
+    if (_isKeychainDenied(result)) {
+      throw QdeckException(
+        code: QdeckErrorCode.permissionDenied,
+        provider: id,
+        message:
+            'O macOS negou acesso ao Keychain do Claude. '
+            'Autorize o QuotaDeck (ou destrave o Keychain) e tente de novo.',
+      );
+    }
+    // Item ausente: último recurso é o arquivo padrão (~/.claude).
+    return _readCredentialFile(ctx, file);
+  }
+
+  Future<Map<String, dynamic>?> _readCredentialFile(
+    ProviderContext ctx,
+    File file,
+  ) async {
+    if (!await file.exists()) return null;
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw const FormatException('credencial sem objeto');
+    } on QdeckException {
+      rethrow;
+    } catch (e) {
+      ctx.log('Claude: credencial ilegível (${e.runtimeType}).');
+      throw QdeckException(
+        code: QdeckErrorCode.credentialUnreadable,
+        provider: id,
+        message:
+            'Arquivo de credencial do Claude existe mas não pôde ser lido '
+            '(${AppPaths.maskPath(file.path, env: ctx.env)}). '
+            'Rode `claude` para autenticar de novo.',
+      );
+    }
+  }
+
+  bool _isKeychainDenied(ProcessResultData result) {
+    // 51 = errSecAuthFailed, 45 = interação não permitida (Keychain travado).
+    if (result.exitCode == 51 || result.exitCode == 45) return true;
+    final err = result.stderr.toLowerCase();
+    return err.contains('denied') ||
+        err.contains('not authorized') ||
+        err.contains('interaction is not allowed');
   }
 }
 

@@ -35,6 +35,15 @@ class ConfigStore {
     return _config!;
   }
 
+  Future<bool> _isReadable(File target) async {
+    try {
+      _decode(await target.readAsString());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   AppConfig _decode(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is Map<String, dynamic>) {
@@ -63,8 +72,12 @@ class ConfigStore {
     }
     if (await file.exists()) {
       try {
-        if (await _backup.exists()) await _backup.delete();
-        await file.copy(_backup.path);
+        // Só rotaciona se o atual for legível: se ele veio corrompido e o
+        // estado foi recuperado do .bak, não podemos destruir o único backup.
+        if (await _isReadable(file)) {
+          if (await _backup.exists()) await _backup.delete();
+          await file.copy(_backup.path);
+        }
       } catch (_) {
         // Backup é best-effort; não impede salvar o principal.
       }

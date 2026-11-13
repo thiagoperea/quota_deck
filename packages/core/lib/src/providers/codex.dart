@@ -27,7 +27,11 @@ class CodexProvider implements ProviderAdapter {
     ]);
     final running = await ctx.discovery.isRunning(const ['codex']);
     final desktopDir = _desktopDir(ctx);
-    final desktopInstalled = desktopDir != null || running;
+    final appBundle = await ctx.discovery.hasAppBundle(const [
+      'Codex',
+      'OpenAI Codex',
+    ]);
+    final desktopInstalled = appBundle || running;
     return DetectionResult.fromSurfaces(
       provider: id,
       surfaces: [
@@ -36,17 +40,21 @@ class CodexProvider implements ProviderAdapter {
           installed: desktopInstalled,
           authenticated: hasAuth,
           live: true,
-          location: desktopDir == null
-              ? (running ? 'processo codex' : null)
-              : AppPaths.maskPath(desktopDir, env: ctx.env),
+          location: running
+              ? 'processo codex'
+              : (desktopInstalled && desktopDir != null
+                    ? AppPaths.maskPath(desktopDir, env: ctx.env)
+                    : null),
           reason: hasAuth
               ? 'Sessão em auth.json compartilhada com o app desktop.'
-              : 'Codex Desktop detectado, sem auth.json.',
+              : desktopInstalled
+              ? 'Codex Desktop detectado, sem auth.json.'
+              : 'Codex Desktop não instalado.',
           action: hasAuth ? null : 'Abra o Codex e faça login.',
         ),
         SurfaceState(
           surface: ProviderSurface.cli,
-          installed: binary != null || hasAuth,
+          installed: binary != null,
           authenticated: hasAuth,
           live: true,
           location: binary,
@@ -75,8 +83,11 @@ class CodexProvider implements ProviderAdapter {
   }
 
   Future<ProviderSurface> _surfaceOf(ProviderContext ctx) async {
-    if (_desktopDir(ctx) != null ||
-        await ctx.discovery.isRunning(const ['codex'])) {
+    final bundle = await ctx.discovery.hasAppBundle(const [
+      'Codex',
+      'OpenAI Codex',
+    ]);
+    if (bundle || await ctx.discovery.isRunning(const ['codex'])) {
       return ProviderSurface.desktop;
     }
     return ProviderSurface.cli;
@@ -114,18 +125,23 @@ class CodexProvider implements ProviderAdapter {
             : 'Não encontrado (pode estar no keyring).',
       ),
     );
-    final auth = await _readAuth(ctx);
+    final read = await _readAuth(ctx);
+    final auth = read.auth;
     checks.add(
       DoctorCheck(
         provider: id,
         id: 'auth-mode',
         label: 'Modo de autenticação',
-        status: auth == null
+        status: read.unreadable
+            ? DoctorStatus.fail
+            : auth == null
             ? DoctorStatus.warn
             : auth.mode == 'chatgpt'
             ? DoctorStatus.ok
             : DoctorStatus.warn,
-        message: auth == null
+        message: read.unreadable
+            ? 'auth.json ilegível (JSON inválido ou sem objeto). Refaça o login no Codex.'
+            : auth == null
             ? 'Sem auth.json legível.'
             : 'auth_mode=${auth.mode}; tokens=${auth.token != null ? 'presentes' : 'ausentes'}; last_refresh=${auth.lastRefresh ?? 'n/a'}',
       ),
@@ -148,37 +164,52 @@ class CodexProvider implements ProviderAdapter {
   Future<bool> _binaryAvailable(ProviderContext ctx) async =>
       await ctx.discovery.firstBinary(const ['codex', 'codex.cmd']) != null;
 
-  Future<_CodexAuth?> _readAuth(ProviderContext ctx) async {
+  Future<_AuthRead> _readAuth(ProviderContext ctx) async {
     final file = AppPaths.codexAuth(env: ctx.env);
-    if (!await file.exists()) return null;
+    if (!await file.exists()) return const _AuthRead.missing();
     try {
       final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map) return null;
+      if (raw is! Map) return const _AuthRead.unreadable();
       final tokens = raw['tokens'];
       final token = tokens is Map ? tokens['access_token']?.toString() : null;
       final accountId = tokens is Map ? tokens['account_id']?.toString() : null;
       final email = tokens is Map
           ? tokens['email']?.toString()
           : raw['email']?.toString();
-      return _CodexAuth(
-        mode: (raw['auth_mode'] ?? 'unknown').toString(),
-        token: token,
-        accountId: accountId,
-        email: email,
-        lastRefresh: raw['last_refresh']?.toString(),
+      return _AuthRead.ok(
+        _CodexAuth(
+          mode: (raw['auth_mode'] ?? 'unknown').toString(),
+          token: token,
+          accountId: accountId,
+          email: email,
+          lastRefresh: raw['last_refresh']?.toString(),
+        ),
       );
+    } on FileSystemException catch (e) {
+      ctx.log('Codex: auth.json ilegível (${e.runtimeType}).');
+      return const _AuthRead.unreadable();
     } catch (e) {
       ctx.log('Codex: auth.json ilegível (${e.runtimeType}).');
-      return null;
+      return const _AuthRead.unreadable();
     }
   }
 
   Future<ProviderSnapshot> _readWham(ProviderContext ctx) async {
-    final auth = await _readAuth(ctx);
+    final read = await _readAuth(ctx);
+    if (read.unreadable) {
+      throw QdeckException(
+        code: QdeckErrorCode.credentialUnreadable,
+        provider: id,
+        message:
+            'auth.json do Codex existe mas não pôde ser lido. '
+            'Abra o Codex e faça login novamente.',
+      );
+    }
+    final auth = read.auth;
     if (auth == null || auth.token == null || auth.token!.isEmpty) {
       final installed =
           await _binaryAvailable(ctx) ||
-          _desktopDir(ctx) != null ||
+          await ctx.discovery.hasAppBundle(const ['Codex', 'OpenAI Codex']) ||
           await ctx.discovery.isRunning(const ['codex']);
       throw QdeckException(
         code: installed
@@ -504,4 +535,15 @@ class _CodexAuth {
     required this.email,
     required this.lastRefresh,
   });
+}
+
+/// Resultado da leitura do auth.json: distingue "não existe" de "existe mas
+/// não dá para ler", que antes viravam o mesmo `NOT_INSTALLED`.
+class _AuthRead {
+  const _AuthRead.missing() : auth = null, unreadable = false;
+  const _AuthRead.unreadable() : auth = null, unreadable = true;
+  const _AuthRead.ok(this.auth) : unreadable = false;
+
+  final _CodexAuth? auth;
+  final bool unreadable;
 }

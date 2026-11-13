@@ -41,6 +41,31 @@ void main() {
     store.close();
   });
 
+  test('burn rate ignora amostras da janela anterior ao reset', () {
+    final now = DateTime.utc(2026, 11, 8, 12);
+    HistorySample sample(double used, int minutesAgo) => HistorySample(
+      provider: ProviderId.opencode,
+      windowId: 'rolling',
+      usedPercent: used,
+      fetchedAt: now.subtract(Duration(minutes: minutesAgo)),
+    );
+
+    // Subiu até 90 e resetou; depois disso subiu 2 pontos em 60 min.
+    final samples = [
+      sample(60, 240),
+      sample(80, 180),
+      sample(90, 120),
+      sample(2, 60),
+      sample(4, 30),
+      sample(6, 0),
+    ];
+
+    final burn = HistoryStore.burnRatePerHour(samples);
+    // 4 pontos em 1 h = ~4 %/h (antes a regressão daria ~0 por causa da queda).
+    expect(burn, closeTo(4, 0.5));
+    expect(HistoryStore.currentWindow(samples), hasLength(3));
+  });
+
   test('burn rate ignores insufficient samples', () {
     final store = HistoryStore.inMemory();
     expect(HistoryStore.burnRatePerHour([]), 0);

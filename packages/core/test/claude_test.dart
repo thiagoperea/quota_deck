@@ -89,4 +89,102 @@ void main() {
     );
     expect(called, isFalse);
   });
+
+  group('macOS: Keychain e CLAUDE_CONFIG_DIR', () {
+    const keychainQuery =
+        'security find-generic-password -s '
+        'Claude Code-credentials -w';
+
+    ProviderContext macContext({
+      Map<String, String> env = const {},
+      Map<String, ProcessResultData> results = const {},
+    }) => ProviderContext(
+      paths: AppPaths(temp),
+      http: MockClient((_) async => http.Response('{}', 200)),
+      process: FakeProcessRunner(results: results),
+      env: {'HOME': temp.path, ...env},
+      now: () => DateTime.utc(2026, 11, 8, 12),
+      log: (_) {},
+    );
+
+    test('Keychain negado vira permissionDenied, não authMissing', () async {
+      if (!Platform.isMacOS) return;
+      // CLI instalada (binário em ~/.local/bin), mas o Keychain nega acesso.
+      final binDir = Directory('${temp.path}/.local/bin');
+      await binDir.create(recursive: true);
+      await File('${binDir.path}/claude').writeAsString('#!/bin/sh\n');
+      final claudeDir = Directory('${temp.path}/.claude');
+      await claudeDir.create();
+      await File('${claudeDir.path}/.credentials.json').writeAsString(
+        jsonEncode({
+          'claudeAiOauth': {'accessToken': 'x', 'expiresAt': 1795000000000},
+        }),
+      );
+      await expectLater(
+        const ClaudeProvider().read(
+          macContext(
+            results: const {
+              keychainQuery: ProcessResultData(
+                exitCode: 51,
+                stdout: '',
+                stderr:
+                    'The user name or passphrase you entered is not correct.',
+              ),
+            },
+          ),
+        ),
+        throwsA(
+          isA<QdeckException>().having(
+            (e) => e.code,
+            'code',
+            QdeckErrorCode.permissionDenied,
+          ),
+        ),
+      );
+    });
+
+    test('CLAUDE_CONFIG_DIR usa o arquivo antes do Keychain', () async {
+      if (!Platform.isMacOS) return;
+      final customDir = Directory('${temp.path}/claude-custom');
+      await customDir.create();
+      await File('${customDir.path}/.credentials.json').writeAsString(
+        jsonEncode({
+          'claudeAiOauth': {
+            'accessToken': 'token-custom-dir',
+            'expiresAt': 1795000000000,
+            'subscriptionType': 'team',
+          },
+        }),
+      );
+
+      final fixture = File('test/fixtures/claude-oauth-usage.example.json')
+          .readAsStringSync();
+      final snapshot = await const ClaudeProvider().read(
+        ProviderContext(
+          paths: AppPaths(temp),
+          http: MockClient(
+            (_) async => http.Response(
+              fixture,
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            ),
+          ),
+          process: FakeProcessRunner(
+            results: const {
+              keychainQuery: ProcessResultData(
+                exitCode: 44,
+                stdout: '',
+                stderr:
+                    'The specified item could not be found in the keychain.',
+              ),
+            },
+          ),
+          env: {'HOME': temp.path, 'CLAUDE_CONFIG_DIR': customDir.path},
+          now: () => DateTime.utc(2026, 11, 8, 12),
+          log: (_) {},
+        ),
+      );
+      expect(snapshot.account.plan, 'team');
+    });
+  });
 }

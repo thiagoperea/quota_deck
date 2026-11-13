@@ -21,6 +21,7 @@ abstract class QuotaService {
   Future<SnapshotEnvelope> snapshot({
     Set<ProviderId>? providers,
     bool noCache = false,
+    bool includeDisabled = false,
   });
 
   Future<SnapshotEnvelope> refresh({ProviderId? provider});
@@ -144,6 +145,10 @@ class DefaultQuotaService implements QuotaService {
         clock.difference(_detectionsAt!) < const Duration(minutes: 5)) {
       return cached;
     }
+    if (force) {
+      // Sem isso, binário instalado depois do start continua "ausente".
+      _discovery.invalidate();
+    }
     final ctx = _ctx;
     final results = await Future.wait(
       adapters.map((adapter) async {
@@ -167,6 +172,7 @@ class DefaultQuotaService implements QuotaService {
   Future<SnapshotEnvelope> snapshot({
     Set<ProviderId>? providers,
     bool noCache = false,
+    bool includeDisabled = false,
   }) async {
     final config = await configStore.load();
     final selected = adapters
@@ -174,7 +180,7 @@ class DefaultQuotaService implements QuotaService {
           if (providers != null && !providers.contains(adapter.id)) {
             return false;
           }
-          return config.isEnabled(adapter.id);
+          return includeDisabled || config.isEnabled(adapter.id);
         })
         .toList(growable: false);
 
@@ -263,6 +269,61 @@ class DefaultQuotaService implements QuotaService {
           code: QdeckErrorCode.network,
           provider: adapter.id,
           message: 'Tempo esgotado ao consultar ${adapter.id.displayName}.',
+        ),
+      );
+    } on SocketException {
+      return _fallbackOrError(
+        adapter.id,
+        QdeckException(
+          code: QdeckErrorCode.network,
+          provider: adapter.id,
+          message:
+              'Sem conexão ao consultar ${adapter.id.displayName}. '
+              'Verifique a rede ou o proxy.',
+        ),
+      );
+    } on http.ClientException {
+      return _fallbackOrError(
+        adapter.id,
+        QdeckException(
+          code: QdeckErrorCode.network,
+          provider: adapter.id,
+          message:
+              'Sem conexão ao consultar ${adapter.id.displayName}. '
+              'Verifique a rede ou o proxy.',
+        ),
+      );
+    } on HandshakeException {
+      return _fallbackOrError(
+        adapter.id,
+        QdeckException(
+          code: QdeckErrorCode.network,
+          provider: adapter.id,
+          message:
+              'Falha de TLS ao consultar ${adapter.id.displayName}. '
+              'Verifique proxy, certificado ou relógio do sistema.',
+        ),
+      );
+    } on TlsException {
+      return _fallbackOrError(
+        adapter.id,
+        QdeckException(
+          code: QdeckErrorCode.network,
+          provider: adapter.id,
+          message:
+              'Falha de TLS ao consultar ${adapter.id.displayName}. '
+              'Verifique proxy, certificado ou relógio do sistema.',
+        ),
+      );
+    } on FormatException {
+      return _fallbackOrError(
+        adapter.id,
+        QdeckException(
+          code: QdeckErrorCode.schemaChanged,
+          provider: adapter.id,
+          message:
+              'Resposta inesperada de ${adapter.id.displayName} '
+              '(formato mudou?).',
         ),
       );
     } catch (e) {

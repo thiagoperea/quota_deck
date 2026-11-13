@@ -234,4 +234,100 @@ void main() {
       expect(formatPercent(130), '100');
     });
   });
+
+  group('QdeckErrorInfo.toJson', () {
+    test('redige segredo na mensagem e nos details', () {
+      const error = QdeckErrorInfo(
+        code: 'UNKNOWN',
+        message: 'falhou com Authorization: Bearer abc123def456',
+        details: {
+          'retryAt': '2026-11-08T12:00:00Z',
+          'raw': 'token=segredo123',
+          'nested': {'cookie': 'sessao=xyz'},
+          'list': ['api_key=chave123'],
+          'count': 2,
+        },
+      );
+
+      final json = error.toJson();
+      final text = json.toString();
+      expect(text, isNot(contains('abc123def456')));
+      expect(text, isNot(contains('segredo123')));
+      expect(text, isNot(contains('chave123')));
+      expect(text, contains('<redacted>'));
+      expect(json['details']['count'], 2);
+      expect(json['details']['retryAt'], '2026-11-08T12:00:00Z');
+    });
+  });
+
+  group('AppConfig.fromJson', () {
+    test('normaliza valores que apagariam histórico ou invertem limites', () {
+      final config = AppConfig.fromJson({
+        'retentionDays': -1,
+        'refreshSeconds': -5,
+        'cacheTtlSeconds': 999999,
+        'resetSoonMinutes': 0,
+        'warningThreshold': 95,
+        'criticalThreshold': 80,
+        'theme': 'roxo',
+      });
+
+      expect(config.retentionDays, 1);
+      expect(config.refreshSeconds, 0);
+      expect(config.cacheTtlSeconds, 86400);
+      expect(config.resetSoonMinutes, 1);
+      expect(config.warningThreshold, 95);
+      expect(config.criticalThreshold, 96);
+      expect(config.criticalThreshold, greaterThan(config.warningThreshold));
+      expect(config.theme, 'system');
+    });
+
+    test('aceita 0 de refresh e limita thresholds extremos', () {
+      final config = AppConfig.fromJson({
+        'refreshSeconds': 0,
+        'warningThreshold': 0,
+        'criticalThreshold': 200,
+      });
+
+      expect(config.refreshSeconds, 0);
+      expect(config.warningThreshold, 1);
+      expect(config.criticalThreshold, 100);
+    });
+
+    test('preserva temas válidos', () {
+      expect(AppConfig.fromJson({'theme': 'light'}).theme, 'light');
+      expect(AppConfig.fromJson({'theme': 'DARK'}).theme, 'dark');
+    });
+  });
+
+  group('clampPercent', () {
+    test('arredonda para uma casa', () {
+      expect(clampPercent(4.24), 4.2);
+      expect(clampPercent(4.26), 4.3);
+      expect(clampPercent(58.5), 58.5);
+    });
+
+    test('não transforma 99,9x em 100 antes do limite real', () {
+      expect(clampPercent(99.9), 99.9);
+      expect(clampPercent(99.94), 99.9);
+      expect(clampPercent(99.95), 99.9);
+      expect(clampPercent(99.99), 99.9);
+    });
+
+    test('100 só quando chegou (ou passou) do limite', () {
+      expect(clampPercent(100), 100);
+      expect(clampPercent(100.2), 100);
+      expect(clampPercent(130), 100);
+    });
+
+    test('normaliza valores inválidos', () {
+      expect(clampPercent(-3), 0);
+      expect(clampPercent(double.nan), 0);
+    });
+
+    test('status não anuncia limite em 99,95', () {
+      expect(statusForUsed(99.95), QuotaStatus.critical);
+      expect(statusForUsed(100), QuotaStatus.limited);
+    });
+  });
 }

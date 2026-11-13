@@ -117,6 +117,10 @@ void main() {
       }),
     );
 
+    // Simula o app instalado (bundle), sem o qual histórico antigo não conta.
+    Directory('${temp.path}/home/Applications/Claude.app')
+        .createSync(recursive: true);
+
     final env = {
       'HOME': Directory('${temp.path}/home').path,
       'USERPROFILE': Directory('${temp.path}/home').path,
@@ -222,4 +226,47 @@ void main() {
     expect(decoded.surface, ProviderSurface.desktop);
     expect(decoded.authenticated, isTrue);
   });
+
+  test(
+    'claude: histórico/dados antigos sozinhos não contam como instalado',
+    () async {
+      final home = Directory('${temp.path}/home3');
+      final dataDir = Directory(
+        '${home.path}/Library/Application Support/Claude',
+      );
+      await dataDir.create(recursive: true);
+      File('${dataDir.path}/plan-usage-history.json').writeAsStringSync(
+        jsonEncode({
+          'version': 2,
+          'samples': [
+            {
+              't': DateTime.utc(2026, 10, 1, 10).millisecondsSinceEpoch,
+              'u': {'fh': 5, 'sd': 10},
+            },
+          ],
+        }),
+      );
+
+      final ctx = ProviderContext(
+        paths: AppPaths(temp),
+        http: MockClient((_) async => http.Response('{}', 500)),
+        process: FakeProcessRunner(),
+        env: {'HOME': home.path, 'USERPROFILE': home.path},
+        now: () => DateTime.utc(2026, 11, 13, 12),
+        log: (_) {},
+      );
+
+      final detection = await const ClaudeProvider().detect(ctx);
+      final desktop = detection.surfaces.firstWhere(
+        (s) => s.surface == ProviderSurface.desktop,
+      );
+      expect(
+        desktop.installed,
+        isFalse,
+        reason: 'sem Claude.app e sem token, dados antigos não são instalação',
+      );
+      expect(desktop.authenticated, isFalse);
+      expect(detection.installedSurfaces, isEmpty);
+    },
+  );
 }

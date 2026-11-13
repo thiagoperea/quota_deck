@@ -164,6 +164,15 @@ class SnapshotCache {
     }
   }
 
+  Future<bool> _isReadable(File target) async {
+    try {
+      jsonDecode(await target.readAsString());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> save() async {
     final f = file;
     if (f == null || !_dirty) return;
@@ -192,8 +201,11 @@ class SnapshotCache {
       }
       if (await f.exists()) {
         try {
-          if (await _backup.exists()) await _backup.delete();
-          await f.copy(_backup.path);
+          // Igual ao config: não sobrescrever um .bak bom com cache corrompido.
+          if (await _isReadable(f)) {
+            if (await _backup.exists()) await _backup.delete();
+            await f.copy(_backup.path);
+          }
         } catch (_) {}
         await f.delete();
       }

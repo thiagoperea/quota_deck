@@ -160,4 +160,39 @@ void main() {
       ),
     );
   });
+
+  test(
+    'auth.json ilegível vira credentialUnreadable, não notInstalled',
+    () async {
+      await auth.writeAsString('{ isso não é json');
+      expect(
+        () => const CodexProvider().read(
+          context(MockClient((_) async => http.Response('{}', 200))),
+        ),
+        throwsA(
+          isA<QdeckException>().having(
+            (e) => e.code,
+            'code',
+            QdeckErrorCode.credentialUnreadable,
+          ),
+        ),
+      );
+    },
+  );
+
+  test('auth.json ausente continua notInstalled/authMissing', () async {
+    await auth.delete();
+    expect(
+      () => const CodexProvider().read(
+        context(MockClient((_) async => http.Response('{}', 200))),
+      ),
+      throwsA(
+        isA<QdeckException>().having(
+          (e) => e.code,
+          'code',
+          isNot(QdeckErrorCode.credentialUnreadable),
+        ),
+      ),
+    );
+  });
 }

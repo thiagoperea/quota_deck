@@ -160,9 +160,23 @@ class HistoryStore {
     db.close();
   }
 
+  /// Descarta amostras anteriores ao último reset (queda de uso): somar as duas
+  /// janelas fazia o ETA sumir ou subestimar o consumo.
+  static List<HistorySample> currentWindow(List<HistorySample> samples) {
+    for (var index = samples.length - 1; index > 0; index--) {
+      final previous = samples[index - 1].usedPercent;
+      final current = samples[index].usedPercent;
+      if (current + 1 < previous) {
+        return samples.sublist(index);
+      }
+    }
+    return samples;
+  }
+
   static double burnRatePerHour(List<HistorySample> samples) {
-    if (samples.length < 3) return 0;
-    final pts = samples
+    final windowed = currentWindow(samples);
+    if (windowed.length < 3) return 0;
+    final pts = windowed
         .where((s) => !s.stale)
         .map(
           (s) => (

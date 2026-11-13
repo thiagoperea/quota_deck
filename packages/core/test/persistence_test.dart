@@ -36,6 +36,50 @@ void main() {
     expect(reloaded.theme, 'light');
   });
 
+  test('config: arquivo corrompido não destrói o backup bom', () async {
+    final file = File('${temp.path}/config.json');
+    final store = ConfigStore(file);
+    await store.save(AppConfig.defaults().copyWith(theme: 'light'));
+    await store.save(AppConfig.defaults().copyWith(theme: 'dark'));
+
+    final backup = File('${file.path}.bak');
+    final goodBackup = await backup.readAsString();
+    expect(goodBackup, contains('"light"'));
+
+    // Principal corrompido (queda de energia) e recuperação pelo backup.
+    await file.writeAsString('{"schemaVersion": 1, "providers":');
+    final recovered = await ConfigStore(file).load();
+    expect(recovered.theme, 'light');
+
+    // Próximo save não pode sobrescrever o backup bom com o lixo.
+    await ConfigStore(file).save(recovered.copyWith(refreshSeconds: 30));
+    expect(await backup.readAsString(), goodBackup);
+  });
+
+  test('cache: arquivo corrompido não destrói o backup bom', () async {
+    final file = File('${temp.path}/cache.json');
+    final cache = SnapshotCache(file: file);
+    cache.put(sampleSnapshot(used: 10));
+    await cache.save();
+    cache.put(sampleSnapshot(used: 20));
+    await cache.save();
+
+    final backup = File('${file.path}.bak');
+    final goodBackup = await backup.readAsString();
+    await file.writeAsString('{ corrompido');
+
+    final reloaded = SnapshotCache(file: file);
+    await reloaded.load();
+    expect(
+      reloaded.get(ProviderId.opencode, maxAge: Duration(days: 1)),
+      isNotNull,
+    );
+
+    reloaded.put(sampleSnapshot(used: 30));
+    await reloaded.save();
+    expect(await backup.readAsString(), goodBackup);
+  });
+
   test('config: falha de escrita propaga e não altera memória', () async {
     final path = '${temp.path}/config.json';
     await Directory(path).create();

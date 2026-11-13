@@ -9,10 +9,75 @@ import 'package:test/test.dart';
 import 'support/fakes.dart';
 import 'support/sample.dart';
 
+/// `which` que passa a responder depois — simula instalar o binário com o app
+/// aberto.
+class _FlakyWhichRunner implements ProcessRunner {
+  bool installed = false;
+
+  @override
+  Future<ProcessResultData> run(
+    String executable,
+    List<String> args, {
+    Map<String, String>? environment,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (executable == 'which' || executable == 'where') {
+      if (!installed) {
+        return const ProcessResultData(exitCode: 1, stdout: '', stderr: '');
+      }
+      return ProcessResultData(
+        exitCode: 0,
+        stdout: '/usr/local/bin/${args.isEmpty ? 'x' : args.first}\n',
+        stderr: '',
+      );
+    }
+    if (executable == 'ps') {
+      return const ProcessResultData(exitCode: 0, stdout: '', stderr: '');
+    }
+    return const ProcessResultData(exitCode: 1, stdout: '', stderr: '');
+  }
+
+  @override
+  Future<ProcessSession> start(
+    String executable,
+    List<String> args, {
+    Map<String, String>? environment,
+  }) async => throw UnimplementedError();
+}
+
+class _DiscoveryAdapter implements ProviderAdapter {
+  @override
+  ProviderId get id => ProviderId.opencode;
+
+  @override
+  Future<DetectionResult> detect(ProviderContext ctx) async {
+    final path = await ctx.discovery.firstBinary(['codex']);
+    return DetectionResult(
+      provider: id,
+      detected: path != null,
+      surfaces: [
+        SurfaceState(
+          surface: ProviderSurface.cli,
+          installed: path != null,
+          location: path,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<ProviderSnapshot> read(ProviderContext ctx) async =>
+      sampleSnapshot(used: 1);
+
+  @override
+  Future<List<DoctorCheck>> doctor(ProviderContext ctx) async => const [];
+}
+
 class _FakeAdapter implements ProviderAdapter {
   int calls = 0;
   bool fail = false;
   bool rateLimit = false;
+  Object? throwable;
 
   @override
   ProviderId get id => ProviderId.opencode;
@@ -24,6 +89,7 @@ class _FakeAdapter implements ProviderAdapter {
   @override
   Future<ProviderSnapshot> read(ProviderContext ctx) async {
     calls++;
+    if (throwable != null) throw throwable!;
     if (rateLimit) {
       throw const QdeckException(
         code: QdeckErrorCode.rateLimited,
@@ -102,6 +168,47 @@ void main() {
     expect(snapshot.stale, isTrue);
     expect(snapshot.errors, isNotEmpty);
     expect(snapshot.windows.first.usedPercent, 10);
+  });
+
+  test('falha de transporte vira NETWORK', () async {
+    adapter.throwable = const SocketException('sem rota');
+    final result = await service.snapshot();
+    expect(result.results.first.errors.first.code, 'NETWORK');
+
+    adapter.throwable = http.ClientException('proxy fechou');
+    final again = await service.snapshot(noCache: true);
+    expect(again.results.first.errors.first.code, 'NETWORK');
+  });
+
+  test('JSON inválido vira SCHEMA_CHANGED', () async {
+    adapter.throwable = const FormatException('Unexpected character');
+    final result = await service.snapshot();
+    expect(result.results.first.errors.first.code, 'SCHEMA_CHANGED');
+  });
+
+  test('detect(force) revalida binário instalado depois da abertura', () async {
+    final runner = _FlakyWhichRunner();
+    final refreshable = DefaultQuotaService(
+      paths: AppPaths(temp),
+      cache: cache,
+      configStore: ConfigStore(File('${temp.path}/config.json')),
+      historyStore: null,
+      httpClient: MockClient((_) async => http.Response('{}', 200)),
+      processRunner: runner,
+      env: const {},
+      now: () => clock,
+      log: (_) {},
+      adapters: [_DiscoveryAdapter()],
+    );
+    addTearDown(refreshable.dispose);
+
+    final before = await refreshable.detect();
+    expect(before.single.detected, isFalse);
+
+    runner.installed = true;
+    final after = await refreshable.detect();
+    expect(after.single.detected, isTrue);
+    expect(after.single.surfaces.single.location, contains('codex'));
   });
 
   test('429 aplica backoff e não chama o adapter durante o bloqueio', () async {

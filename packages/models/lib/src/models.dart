@@ -1,6 +1,8 @@
 // DTOs compartilhados entre core, daemon, CLI e app Flutter.
 // Este arquivo deve ser web-safe: sem dart:io, sem sqlite3, sem Flutter.
 
+import 'redaction.dart';
+
 enum ProviderId {
   opencode,
   antigravity,
@@ -331,9 +333,23 @@ class QdeckErrorInfo {
 
   Map<String, dynamic> toJson() => {
     'code': code,
-    'message': message,
+    // Toda serialização de erro passa por aqui; redigir aqui evita vazar
+    // token em `qdeck show --json`, cache e histórico.
+    'message': redact(message),
     'retryable': retryable,
-    if (details != null) 'details': details,
+    if (details != null) 'details': _redactDetails(details!),
+  };
+
+  static Map<String, dynamic> _redactDetails(Map<String, dynamic> details) => {
+    for (final entry in details.entries)
+      entry.key: switch (entry.value) {
+        final String value => redact(value),
+        final List<dynamic> values => [
+          for (final item in values) item is String ? redact(item) : item,
+        ],
+        final Map<String, dynamic> nested => _redactDetails(nested),
+        final other => other,
+      },
   };
 }
 
@@ -539,6 +555,17 @@ class DetectionResult {
             .toList(growable: false),
       );
 
+  DetectionResult copyWith({
+    bool? detected,
+    String? reason,
+    List<SurfaceState>? surfaces,
+  }) => DetectionResult(
+    provider: provider,
+    detected: detected ?? this.detected,
+    reason: reason ?? this.reason,
+    surfaces: surfaces ?? this.surfaces,
+  );
+
   List<SurfaceState> get installedSurfaces =>
       surfaces.where((s) => s.installed).toList(growable: false);
 
@@ -612,6 +639,24 @@ class SurfaceState {
     account: json['account']?.toString(),
     reason: json['reason']?.toString(),
     action: json['action']?.toString(),
+  );
+
+  SurfaceState copyWith({
+    bool? installed,
+    bool? authenticated,
+    bool? live,
+    String? reason,
+    String? action,
+  }) => SurfaceState(
+    surface: surface,
+    installed: installed ?? this.installed,
+    authenticated: authenticated ?? this.authenticated,
+    live: live ?? this.live,
+    version: version,
+    location: location,
+    account: account,
+    reason: reason ?? this.reason,
+    action: action ?? this.action,
   );
 
   Map<String, dynamic> toJson() => {
@@ -812,35 +857,48 @@ class AppConfig {
         surfaces[entry.key.toString()] = _asBool(entry.value);
       }
     }
+    // Config pode vir editada à mão ou de uma versão futura; normalizar aqui
+    // evita prune apagando tudo e thresholds invertidos.
+    final refreshSeconds = _asInt(
+      json['refreshSeconds'],
+      defaults.refreshSeconds,
+    ).clamp(0, 86400);
+    final warningThreshold = _asInt(
+      json['warningThreshold'],
+      defaults.warningThreshold,
+    ).clamp(1, 99);
+    final criticalThreshold = _asInt(
+      json['criticalThreshold'],
+      defaults.criticalThreshold,
+    ).clamp(warningThreshold + 1, 100);
+    final theme = _normalizeTheme(json['theme']);
+
     return AppConfig(
       schemaVersion: _asInt(json['schemaVersion'], 1),
       providers: providers,
       surfaces: surfaces,
-      refreshSeconds: _asInt(json['refreshSeconds'], defaults.refreshSeconds),
+      refreshSeconds: refreshSeconds,
       cacheTtlSeconds: _asInt(
         json['cacheTtlSeconds'],
         defaults.cacheTtlSeconds,
-      ),
+      ).clamp(0, 86400),
       historyEnabled: json['historyEnabled'] == null
           ? defaults.historyEnabled
           : _asBool(json['historyEnabled']),
-      retentionDays: _asInt(json['retentionDays'], defaults.retentionDays),
+      retentionDays: _asInt(
+        json['retentionDays'],
+        defaults.retentionDays,
+      ).clamp(1, 3650),
       notificationsEnabled: json['notificationsEnabled'] == null
           ? defaults.notificationsEnabled
           : _asBool(json['notificationsEnabled']),
-      warningThreshold: _asInt(
-        json['warningThreshold'],
-        defaults.warningThreshold,
-      ),
-      criticalThreshold: _asInt(
-        json['criticalThreshold'],
-        defaults.criticalThreshold,
-      ),
+      warningThreshold: warningThreshold,
+      criticalThreshold: criticalThreshold,
       resetSoonMinutes: _asInt(
         json['resetSoonMinutes'],
         defaults.resetSoonMinutes,
-      ),
-      theme: (json['theme'] ?? defaults.theme).toString(),
+      ).clamp(1, 1440),
+      theme: theme,
       launchAtLogin: json['launchAtLogin'] == null
           ? defaults.launchAtLogin
           : _asBool(json['launchAtLogin']),
@@ -963,12 +1021,24 @@ class AppConfig {
 // Helpers (também exportados via status.dart)
 // ---------------------------------------------------------------------------
 
+String _normalizeTheme(dynamic raw) {
+  final value = (raw ?? 'system').toString().trim().toLowerCase();
+  return switch (value) {
+    'light' || 'dark' => value,
+    _ => 'system',
+  };
+}
+
 double clampPercent(num value) {
   final v = value.toDouble();
   if (v.isNaN) return 0;
   if (v < 0) return 0;
   if (v > 100) return 100;
-  return (v * 10).roundToDouble() / 10;
+  final rounded = (v * 10).roundToDouble() / 10;
+  // 99,95 arredondaria para 100 e o app anunciaria "limite" antes da hora.
+  // 100 continua reservado para quem realmente chegou (ou passou) do limite.
+  if (rounded >= 100 && v < 100) return 99.9;
+  return rounded;
 }
 
 double asDouble(dynamic value) {

@@ -17,6 +17,14 @@ class SystemDiscovery {
   DateTime? _runningAt;
   final Map<String, Future<String?>> _which = {};
 
+  /// Esquece tudo que foi descoberto: usado pelo "Verificar agora", que
+  /// precisa ver binários instalados depois da abertura do app.
+  void invalidate() {
+    _running = null;
+    _runningAt = null;
+    _which.clear();
+  }
+
   Future<Set<String>> runningProcesses({
     Duration ttl = const Duration(minutes: 5),
   }) {
@@ -74,6 +82,25 @@ class SystemDiscovery {
       final needle = name.toLowerCase();
       for (final proc in running) {
         if (proc == needle || proc.startsWith('$needle.')) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Procura `Nome.app` em /Applications e ~/Applications.
+  ///
+  /// Diretório de configuração do app **não** conta como instalação: sobra de
+  /// uma instalação antiga fazia o app aparecer como "instalado".
+  Future<bool> hasAppBundle(Iterable<String> names) async {
+    final home = env?['HOME'] ?? Platform.environment['HOME'] ?? '';
+    final roots = <Directory>[
+      Directory('/Applications'),
+      if (home.isNotEmpty) Directory(p.join(home, 'Applications')),
+    ];
+    for (final root in roots) {
+      for (final name in names) {
+        final bundle = Directory(p.join(root.path, '$name.app'));
+        if (bundle.existsSync()) return true;
       }
     }
     return false;
