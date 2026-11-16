@@ -182,7 +182,10 @@ Rode depois de qualquer mudança em `TrayService`, `main.dart` ou no runner
 2. Clicar em "Entendi" → a janela some e **o processo continua vivo**
    (`pgrep -fl quota_deck.app/Contents/MacOS/quota_deck`).
 3. Clicar no ícone da bandeja → o mini volta.
-4. Menu da bandeja → "Sair" → o processo encerra de verdade.
+4. Clicar no ícone **várias vezes seguidas** (abre/fecha o mini) e trocar para
+   "Dashboard completo" e voltar → o processo não pode morrer. Esse era o crash
+   do Impeller no raster thread (ver `FLTEnableImpeller` em `Info.plist`).
+5. Menu da bandeja → "Sair" → o processo encerra de verdade.
 
 Se o passo 2 falhar, o runner voltou a encerrar no último fechamento
 (`applicationShouldTerminateAfterLastWindowClosed` em `AppDelegate.swift`);
@@ -193,6 +196,7 @@ Se o passo 2 falhar, o runner voltou a encerrar no último fechamento
 | Sintoma | Ação |
 |---|---|
 | Tray não aparece no Linux | precisa de AppIndicator no painel (KDE, Ubuntu com extensão) |
+| App fecha ao clicar na bandeja (macOS) | confira `FLTEnableImpeller` = `false` no `macos/Runner/Info.plist`: o Impeller do Flutter 3.47.9 quebra no resize da janela do mini |
 | `xcodebuild requires Xcode` | instalar Xcode; os testes Dart e a CLI seguem funcionando |
 | Claude com `AUTH_EXPIRED` | abrir o Claude Code e renovar; o app não renova refresh token |
 | Antigravity sem dados | abrir o Antigravity; o RPC local depende do app rodando |

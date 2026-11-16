@@ -22,6 +22,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- Impeller no macOS 27 + Flutter 3.47.9 entrega um render target com
+	     tamanho divergente do drawable depois de um resize programático da
+	     janela (abrir o mini pela bandeja) e derruba o app no raster thread.
+	     Volta a ligar quando o Flutter for atualizado. -->
+	<key>FLTEnableImpeller</key>
+	<false/>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>

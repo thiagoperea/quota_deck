@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.2
+
+### Bandeja no macOS
+- Clicar no ícone da bandeja não derruba mais o app. O `openMiniWindow`
+  redimensiona a janela (420×760 → 380×500) e, com o Impeller do Flutter
+  3.47.9 no macOS 26/27, o raster thread recebia um render target com tamanho
+  diferente do drawable: `The texture and its descriptor disagree about its
+  size` e SIGSEGV em `impeller::Canvas::SetupRenderPass`. O runner agora desliga
+  o Impeller (`FLTEnableImpeller` = `false` no `Info.plist`) e usa Skia/Metal.
+  Religa quando o Flutter for atualizado (`app/test/macos_renderer_test.dart`
+  guarda a regressão).
+
 ## 0.7.1
 
 ### Bandeja e janela
